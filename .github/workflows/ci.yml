@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build_and_deploy:
+    name: Build and deploy to gh-pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cancel Previous Runs
+        uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: 17
+          cache: sbt
+
+      - uses: sbt/setup-sbt@v1
+
+      - name: Build optimized JavaScript
+        working-directory: feature
+        run: sbt fullLinkJS
+
+      - name: Checkout gh-pages branch (create if missing)
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" gh-pages >/dev/null 2>&1; then
+            git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+          else
+            git init pages
+            git -C pages checkout --orphan gh-pages
+            git -C pages remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          fi
+
+      - name: Extract branch name
+        shell: bash
+        run: echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        id: extract_branch
+
+      - name: Replace branch directory in pages
+        shell: bash
+        run: |
+          dest="pages/${{ steps.extract_branch.outputs.branch }}"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp feature/web/index.html "$dest/"
+          cp feature/target/scala-*/*-opt/main.js "$dest/"
+
+      - name: Commit gh pages for feature
+        uses: EndBug/add-and-commit@v9
+        with:
+          cwd: pages
+          message: "Release for ${{ steps.extract_branch.outputs.branch }}"
