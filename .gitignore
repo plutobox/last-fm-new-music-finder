@@ -9,3 +9,4 @@ project/project/
 .DS_Store
 *.log
 .env
+.playwright-mcp/
