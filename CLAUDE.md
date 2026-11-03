@@ -22,6 +22,7 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 | `LAST_FM_API_KEY` | Secret | Windows user env vars; GitHub repo secret |
 | `LAST_FM_SHARED_SECRET` | Secret | Windows user env vars; GitHub repo secret |
 | `LAST_FM_USERNAME` | Secret | Windows user env vars; GitHub repo secret (`TheBowser`) |
+| `LAST_FM_AGE_IDENTITY` | Secret (age X25519 private key) | GitHub repo secret; local copy in `$HOME\.last-fm-new-music-finder.age.key` (made with `scripts/gen-age-key.mjs`). `scripts/crawl-friends.mjs` uses it to read and write encrypted `.age` output. |
 
 ### Getting the values
 
@@ -33,7 +34,7 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
   [Environment]::SetEnvironmentVariable("LAST_FM_USERNAME", "TheBowser", "User")
   [Environment]::SetEnvironmentVariable("LAST_FM_APPLICATION_NAME", "last-fm-new-music-finder", "User")
   ```
-- **In CI (GitHub Actions):** `LAST_FM_API_KEY`, `LAST_FM_SHARED_SECRET`, and `LAST_FM_USERNAME` are repo **secrets** (`${{ secrets.NAME }}`). `LAST_FM_APPLICATION_NAME` is a plain env/variable (`${{ vars.LAST_FM_APPLICATION_NAME }}`). Manage with `gh secret set <NAME>` / `gh variable set <NAME>`.
+- **In CI (GitHub Actions):** `LAST_FM_API_KEY`, `LAST_FM_SHARED_SECRET`, `LAST_FM_USERNAME`, and `LAST_FM_AGE_IDENTITY` are repo **secrets** (`${{ secrets.NAME }}`). `LAST_FM_APPLICATION_NAME` is a plain env/variable (`${{ vars.LAST_FM_APPLICATION_NAME }}`). Manage with `gh secret set <NAME>` / `gh variable set <NAME>`.
 - Don't create `.env` files with real values; `.env` is gitignored.
 
 ## Last.fm Authentication
