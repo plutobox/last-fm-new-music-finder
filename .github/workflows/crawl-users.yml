@@ -1,0 +1,62 @@
+name: Crawl Last.fm users
+
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Comma-separated seed usernames"
+        default: "ceveriee,TheBowser,B3nCastle"
+      depth:
+        description: "Friend-hops from the seeds"
+        default: "2"
+      max_users:
+        description: "Stop after this many new users"
+        default: "500"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Checkout gh-pages branch (create if missing)
+        shell: bash
+        run: |
+          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" gh-pages >/dev/null 2>&1; then
+            git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+          else
+            git init pages
+            git -C pages checkout --orphan gh-pages
+            git -C pages remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          fi
+
+      - name: Crawl friends (merges into existing data/users.json)
+        env:
+          LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
+          LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
+        run: |
+          node feature/scripts/crawl-friends.mjs \
+            --seeds "${{ inputs.seeds }}" \
+            --depth "${{ inputs.depth }}" \
+            --max-users "${{ inputs.max_users }}" \
+            --out pages/data/users.json
+
+      - name: Commit users.json to gh-pages
+        uses: EndBug/add-and-commit@v9
+        with:
+          cwd: pages
+          message: "Update crawled users"
+          push: origin gh-pages --set-upstream
