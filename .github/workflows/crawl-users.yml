@@ -1,16 +1,21 @@
 name: Crawl Last.fm users
 
 on:
+  schedule:
+    - cron: "17 */2 * * *" # every 2 hours (off the top of the hour, which GitHub delays most)
   workflow_dispatch:
     inputs:
       seeds:
-        description: "Comma-separated seed usernames"
-        default: "ceveriee,TheBowser,B3nCastle"
+        description: "Comma-separated seed usernames (leave empty to pick random users from the existing list)"
+        default: ""
+      random_seeds:
+        description: "How many random seeds to pick when seeds is empty"
+        default: "5"
       depth:
         description: "Friend-hops from the seeds"
         default: "2"
       max_users:
-        description: "Stop after this many new users"
+        description: "Stop after this many users not already in the list"
         default: "500"
 
 permissions:
@@ -30,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24 # built-in node:sqlite
 
       - name: Checkout gh-pages branch (create if missing)
         shell: bash
@@ -47,21 +52,31 @@ jobs:
         working-directory: feature/scripts
         run: npm ci
 
-      - name: Crawl friends (decrypts, merges, re-encrypts data/users.json.age)
+      - name: Crawl friends (decrypts, updates, re-encrypts data/users.db.age)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
+          # Scheduled runs have no inputs, so fall back to the defaults.
+          SEEDS: ${{ inputs.seeds || '' }}
+          RANDOM_SEEDS: ${{ inputs.random_seeds || '5' }}
+          DEPTH: ${{ inputs.depth || '2' }}
+          MAX_USERS: ${{ inputs.max_users || '500' }}
         run: |
           node feature/scripts/crawl-friends.mjs \
-            --seeds "${{ inputs.seeds }}" \
-            --depth "${{ inputs.depth }}" \
-            --max-users "${{ inputs.max_users }}" \
-            --out pages/data/users.json.age
+            --seeds "$SEEDS" \
+            --random-seeds "$RANDOM_SEEDS" \
+            --depth "$DEPTH" \
+            --max-users "$MAX_USERS" \
+            --db pages/data/users.db.age \
+            --import-json pages/data/users.json.age
+          # The old JSON list has been migrated into the database.
+          rm -f pages/data/users.json.age
 
-      - name: Commit users.json to gh-pages
+      - name: Commit users.db.age to gh-pages
         uses: EndBug/add-and-commit@v9
         with:
           cwd: pages
-          message: "Update encrypted crawled users"
+          add: "data"
+          message: "Update encrypted crawled users database"
           push: origin gh-pages --set-upstream
