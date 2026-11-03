@@ -64,3 +64,4 @@ jobs:
         with:
           cwd: pages
           message: "Release for ${{ steps.extract_branch.outputs.branch }}"
+          push: origin gh-pages --set-upstream
