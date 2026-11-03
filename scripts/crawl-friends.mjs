@@ -1,5 +1,8 @@
 // Breadth-first crawl of Last.fm friends via user.getFriends.
 // Usage: node scripts/crawl-friends.mjs --seeds a,b --depth 2 --max-users 500 --out data/users.json
+//        node scripts/crawl-friends.mjs --random-seeds 5 --out data/users.json.age
+// --random-seeds N picks N random users from the existing file as seeds (used when --seeds is empty).
+// --max-users caps how many users NOT already in the file are added this run.
 // Needs LAST_FM_API_KEY (and optionally LAST_FM_APPLICATION_NAME for the User-Agent) in the environment.
 // If --out ends in ".age", the file is read/written encrypted; LAST_FM_AGE_IDENTITY (an age private key)
 // must be set. The public recipient is derived from it, so only one secret is needed.
@@ -17,7 +20,8 @@ const args = Object.fromEntries(
 const apiKey = process.env.LAST_FM_API_KEY;
 if (!apiKey) throw new Error("LAST_FM_API_KEY is not set");
 
-const seeds = (args.seeds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+let seeds = (args.seeds ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const randomSeeds = Number(args["random-seeds"] ?? 0);
 const maxDepth = Number(args.depth ?? 2);
 const maxUsers = Number(args["max-users"] ?? 500);
 const maxPagesPerUser = Number(args["max-pages"] ?? 3);
@@ -28,7 +32,7 @@ if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set 
 const userAgent = process.env.LAST_FM_APPLICATION_NAME ?? "last-fm-new-music-finder";
 const DELAY_MS = 250; // ~4 req/s, under Last.fm's ~5/s limit
 
-if (seeds.length === 0) throw new Error("No seeds given (--seeds a,b,c)");
+if (seeds.length === 0 && !(randomSeeds > 0)) throw new Error("No seeds given (--seeds a,b,c or --random-seeds N)");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -77,33 +81,49 @@ async function writeStore(obj) {
 const existing = await readStore();
 const known = new Map(existing.users.map((u) => [u.name.toLowerCase(), u]));
 
-const seen = new Map(); // lowercase -> { name, depth }
-let frontier = [];
-for (const s of seeds) {
-  seen.set(s.toLowerCase(), { name: s, depth: 0 });
-  frontier.push(s);
+if (seeds.length === 0) {
+  // Fisher-Yates shuffle, then take the first N.
+  const pool = existing.users.map((u) => u.name);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  seeds = pool.slice(0, randomSeeds);
+  if (seeds.length === 0) throw new Error(`--random-seeds needs an existing ${out} with users in it`);
 }
+console.log(`Seeds: ${seeds.join(", ")}`);
+
+const seen = new Map(); // lowercase -> { name, depth }
+let added = 0; // users not already in the file
+const full = () => added >= maxUsers;
+const visit = (name, depth) => {
+  const key = name.toLowerCase();
+  if (seen.has(key)) return false;
+  seen.set(key, { name, depth });
+  if (!known.has(key)) added++;
+  return true;
+};
+
+let frontier = [];
+for (const s of seeds) if (visit(s, 0)) frontier.push(s);
 
 let skipped = 0;
-for (let depth = 0; depth < maxDepth && frontier.length && seen.size < maxUsers; depth++) {
+for (let depth = 0; depth < maxDepth && frontier.length && !full(); depth++) {
   const next = [];
   for (const user of frontier) {
-    if (seen.size >= maxUsers) break;
+    if (full()) break;
     let page = 1, total = 1;
-    while (page <= Math.min(total, maxPagesPerUser) && seen.size < maxUsers) {
+    while (page <= Math.min(total, maxPagesPerUser) && !full()) {
       const r = await getFriendsPage(user, page);
       if (r.error) { skipped++; break; }
       total = r.totalPages;
       for (const f of r.friends) {
-        const key = f.toLowerCase();
-        if (!seen.has(key) && seen.size < maxUsers) {
-          seen.set(key, { name: f, depth: depth + 1 });
-          next.push(f);
-        }
+        if (full()) break;
+        if (visit(f, depth + 1)) next.push(f);
       }
       page++;
     }
-    console.log(`depth ${depth} ${user}: total unique so far ${seen.size}`);
+    console.log(`depth ${depth} ${user}: new so far ${added}`);
   }
   frontier = next;
 }
@@ -112,4 +132,4 @@ for (const [key, u] of seen) if (!known.has(key)) known.set(key, u);
 
 const users = [...known.values()].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
 await writeStore({ generatedAt: new Date().toISOString(), seeds, count: users.length, users });
-console.log(`Wrote ${users.length} users to ${out} (new this run: ${seen.size}, skipped/private: ${skipped})`);
+console.log(`Wrote ${users.length} users to ${out} (new this run: ${added}, skipped/private: ${skipped})`);
