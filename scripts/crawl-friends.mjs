@@ -272,14 +272,19 @@ for (const s of seeds) if (!visited.has(s.toLowerCase())) { visited.add(s.toLowe
 
 for (let depth = 0; depth < maxDepth && frontier.length && !full(); depth++) {
   const next = [];
+  let expanded = 0;
   for (const user of frontier) {
     if (full()) break;
+    expanded++;
     for (const f of await expand(user)) {
       const key = f.toLowerCase();
       if (!visited.has(key)) { visited.add(key); next.push(f); }
     }
   }
-  console.log(`depth ${depth}: expanded ${frontier.length} users, new so far ${added}, requests ${requests}`);
+  console.log(
+    `depth ${depth}: expanded ${expanded} of ${frontier.length} queued users, ` +
+    `new so far ${added}, requests ${requests}`
+  );
   frontier = next;
 }
 

@@ -16,7 +16,7 @@ on:
         default: "2"
       max_users:
         description: "Stop after this many users not already in the list"
-        default: "500"
+        default: "5000"
 
 permissions:
   contents: write
@@ -61,7 +61,7 @@ jobs:
           SEEDS: ${{ inputs.seeds || '' }}
           RANDOM_SEEDS: ${{ inputs.random_seeds || '5' }}
           DEPTH: ${{ inputs.depth || '2' }}
-          MAX_USERS: ${{ inputs.max_users || '500' }}
+          MAX_USERS: ${{ inputs.max_users || '5000' }}
         run: |
           node feature/scripts/crawl-friends.mjs \
             --seeds "$SEEDS" \
