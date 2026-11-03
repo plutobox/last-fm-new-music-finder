@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24 # built-in node:sqlite
 
       - name: Checkout gh-pages branch (create if missing)
         shell: bash
@@ -52,7 +52,7 @@ jobs:
         working-directory: feature/scripts
         run: npm ci
 
-      - name: Crawl friends (decrypts, merges, re-encrypts data/users.json.age)
+      - name: Crawl friends (decrypts, updates, re-encrypts data/users.db.age)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
@@ -68,11 +68,15 @@ jobs:
             --random-seeds "$RANDOM_SEEDS" \
             --depth "$DEPTH" \
             --max-users "$MAX_USERS" \
-            --out pages/data/users.json.age
+            --db pages/data/users.db.age \
+            --import-json pages/data/users.json.age
+          # The old JSON list has been migrated into the database.
+          rm -f pages/data/users.json.age
 
-      - name: Commit users.json to gh-pages
+      - name: Commit users.db.age to gh-pages
         uses: EndBug/add-and-commit@v9
         with:
           cwd: pages
-          message: "Update encrypted crawled users"
+          add: "data"
+          message: "Update encrypted crawled users database"
           push: origin gh-pages --set-upstream

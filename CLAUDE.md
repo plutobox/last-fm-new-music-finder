@@ -37,6 +37,14 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 - **In CI (GitHub Actions):** `LAST_FM_API_KEY`, `LAST_FM_SHARED_SECRET`, `LAST_FM_USERNAME`, and `LAST_FM_AGE_IDENTITY` are repo **secrets** (`${{ secrets.NAME }}`). `LAST_FM_APPLICATION_NAME` is a plain env/variable (`${{ vars.LAST_FM_APPLICATION_NAME }}`). Manage with `gh secret set <NAME>` / `gh variable set <NAME>`.
 - Don't create `.env` files with real values; `.env` is gitignored.
 
+## Crawled users database
+
+- `.github/workflows/crawl-users.yml` runs every 2 hours (and on demand). It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
+- The database is published age-encrypted at `gh-pages:data/users.db.age`. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
+- Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
+- To inspect it locally, decrypt it outside the repo: `node scripts/decrypt.mjs users.db.age <temp>/users.db` (needs `LAST_FM_AGE_IDENTITY`).
+- The repo is public, so Actions logs are too: the crawler logs counts only, never usernames.
+
 ## Last.fm Authentication
 
 Docs: https://www.last.fm/api/webauth
