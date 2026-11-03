@@ -43,20 +43,25 @@ jobs:
             git -C pages remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
           fi
 
-      - name: Crawl friends (merges into existing data/users.json)
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Crawl friends (decrypts, merges, re-encrypts data/users.json.age)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
         run: |
           node feature/scripts/crawl-friends.mjs \
             --seeds "${{ inputs.seeds }}" \
             --depth "${{ inputs.depth }}" \
             --max-users "${{ inputs.max_users }}" \
-            --out pages/data/users.json
+            --out pages/data/users.json.age
 
       - name: Commit users.json to gh-pages
         uses: EndBug/add-and-commit@v9
         with:
           cwd: pages
-          message: "Update crawled users"
+          message: "Update encrypted crawled users"
           push: origin gh-pages --set-upstream

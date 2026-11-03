@@ -10,3 +10,4 @@ project/project/
 *.log
 .env
 .playwright-mcp/
+node_modules/

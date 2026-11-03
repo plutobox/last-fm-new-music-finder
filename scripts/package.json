@@ -1,0 +1,8 @@
+{
+  "name": "last-fm-scripts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "age-encryption": "^0.3.1"
+  }
+}
