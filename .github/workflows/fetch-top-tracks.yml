@@ -56,5 +56,53 @@ jobs:
             --max-users "$MAX_USERS" \
             --minutes "$MINUTES"
 
+      - name: Fetch artist tags, for genres (only adds to its own tables)
+        env:
+          LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+          LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
+        run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 10
+
       - name: Upload the database to the release
         run: node feature/scripts/release-store.mjs upload db
+
+  publish-songs:
+    needs: fetch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: gh-pages-write
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Checkout gh-pages branch
+        run: git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
+      - name: Build the public songs file (no usernames or per-user data)
+        env:
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+        run: node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json --max-mb 5
+
+      - name: Commit songs.json to gh-pages
+        uses: EndBug/add-and-commit@v9
+        with:
+          cwd: pages
+          add: "data/songs.json"
+          message: "Update public songs file"
+          push: origin gh-pages --set-upstream
