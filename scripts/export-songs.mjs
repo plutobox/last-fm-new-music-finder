@@ -20,7 +20,7 @@ const args = Object.fromEntries(
 
 const MIN_LISTENERS = 2;
 const MIN_TAG_COUNT = 20; // ignore tags Last.fm itself weights weakly for an artist
-const COLUMNS = ["artist", "song", "genres", "listeners", "plays", "loved_by"];
+const COLUMNS = ["artist", "song", "genres", "listeners", "plays", "loved_by", "year", "youtube_id"];
 
 // Only these become genres, so tags like "seen live" or an artist's own name never reach the file.
 // Keys are Last.fm tags in lowercase; values are the genre shown.
@@ -80,6 +80,10 @@ const songGenres = collectGenres(db.prepare(`
   ORDER BY st.song_id, st.position
 `).iterate());
 
+// These come from import-musicbrainz.mjs, which may not have run on this database yet.
+const songColumns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
+const optionalSongColumn = (name) => (songColumns.includes(name) ? `s.${name}` : "NULL");
+
 const candidates = db.prepare(`
   WITH listeners AS (
     SELECT song_id, count(*) AS n
@@ -93,7 +97,8 @@ const candidates = db.prepare(`
     GROUP BY song_id
   ),
   loved AS (SELECT song_id, count(*) AS n FROM user_loved_songs GROUP BY song_id)
-  SELECT s.id AS song_id, s.artist_id, a.name AS artist, s.name AS song, l.n AS listeners,
+  SELECT s.id AS song_id, s.artist_id, a.name AS artist, s.name AS song, ${optionalSongColumn("release_year")} AS year,
+         ${optionalSongColumn("youtube_id")} AS youtube_id, l.n AS listeners,
          coalesce(p.n, 0) AS plays, coalesce(h.n, 0) AS loved_by
   FROM listeners l
   JOIN songs s ON s.id = l.song_id
@@ -114,7 +119,7 @@ for (const c of candidates) {
   const own = songGenres.get(c.song_id);
   const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
-  const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by];
+  const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id];
   const size = Buffer.byteLength(JSON.stringify(row)) + 2;
   if (bytes + size > maxBytes) { droppedForSize++; continue; }
   bytes += size;

@@ -56,6 +56,7 @@ private def statusPanel(message: String) =
   div(cls := "status", h1("Song finder"), p(message))
 
 private def finder(library: Library) =
+  val player = new Player
   val query = Var(Query())
   val shuffleSeed = Var(js.Math.floor(js.Math.random() * 1_000_000).toInt)
   val result = query.signal.combineWith(shuffleSeed.signal).map((q, seed) => Songs.run(library, q, seed))
@@ -81,7 +82,9 @@ private def finder(library: Library) =
     readMin: Query => String,
     writeMin: (Query, String) => Query,
     readMax: Query => String,
-    writeMax: (Query, String) => Query
+    writeMax: (Query, String) => Query,
+    lowLabel: String = "At least",
+    highLabel: String = "At most"
   ) =
     def box(boxLabel: String, read: Query => String, write: (Query, String) => Query) =
       input(
@@ -97,8 +100,8 @@ private def finder(library: Library) =
     div(
       cls := "range",
       span(cls := "field-name", labelText),
-      box("At least", readMin, writeMin),
-      box("At most", readMax, writeMax)
+      box(lowLabel, readMin, writeMin),
+      box(highLabel, readMax, writeMax)
     )
 
   val filters = form(
@@ -150,6 +153,18 @@ private def finder(library: Library) =
     ),
     textField("Artist", _.artist, (q, v) => q.copy(artist = v), "Any artist"),
     textField("Song", _.title, (q, v) => q.copy(title = v), "Any song"),
+    htmlTag("label")(
+      cls := "check",
+      input(
+        typ := "checkbox",
+        controlled(
+          checked <-- query.signal.map(_.playableOnly),
+          onClick.mapToChecked --> (v => update(_.copy(playableOnly = v)))
+        )
+      ),
+      "Only songs that play here"
+    ),
+    rangeField("Release year", _.yearFrom, (q, v) => q.copy(yearFrom = v), _.yearTo, (q, v) => q.copy(yearTo = v), "From", "To"),
     rangeField("Listeners", _.minListeners, (q, v) => q.copy(minListeners = v), _.maxListeners, (q, v) => q.copy(maxListeners = v)),
     rangeField("Plays", _.minPlays, (q, v) => q.copy(minPlays = v), _.maxPlays, (q, v) => q.copy(maxPlays = v)),
     rangeField("Loved by", _.minLoved, (q, v) => q.copy(minLoved = v), _.maxLoved, (q, v) => q.copy(maxLoved = v)),
@@ -191,14 +206,37 @@ private def finder(library: Library) =
       )
   )
 
-  def row(position: Int, s: Song) =
+  def row(position: Int, s: Song, results: Vector[Song]) =
     tr(
-      td(cls := "pos", position.toString),
+      cls("is-playing") <-- player.current.signal.map(_.contains(s)),
+      td(
+        cls := "pos",
+        div(position.toString),
+        s.youtubeId match
+          case Some(_) =>
+            button(
+              typ := "button",
+              cls := "play",
+              aria.label := s"Play ${s.title} by ${s.artist}",
+              "▶︎",
+              onClick --> (_ => player.play(s, results.filter(_.youtubeId.isDefined)))
+            )
+          case None =>
+            a(
+              cls := "play play-away",
+              href := s.youtubeSearchUrl,
+              target := "_blank",
+              rel := "noopener",
+              aria.label := s"Search YouTube for ${s.title} by ${s.artist}, in a new tab",
+              title := "No video here yet. Search YouTube in a new tab.",
+              "↗︎"
+            )
+      ),
       td(
         cls := "track",
         div(cls := "bar", styleAttr := s"width:${(s.listeners * 100.0 / library.maxListeners).max(1.5)}%"),
         a(href := s.url, target := "_blank", rel := "noopener", cls := "title", s.title),
-        div(cls := "artist", s.artist),
+        div(cls := "artist", s.year.fold(s.artist)(y => s"${s.artist}, $y")),
         div(cls := "tags", s.genres.mkString(", "))
       ),
       td(cls := "num", dataAttr("label") := "Listeners", formatCount(s.listeners)),
@@ -234,7 +272,7 @@ private def finder(library: Library) =
               th(cls := "num", "Loved by")
             )
           ),
-          tbody(r.songs.zipWithIndex.map((s, i) => row(i + 1, s)))
+          tbody(r.songs.zipWithIndex.map((s, i) => row(i + 1, s, r.songs)))
         )
   )
 
@@ -253,5 +291,6 @@ private def finder(library: Library) =
       "Data from ",
       a(href := "https://www.last.fm", target := "_blank", rel := "noopener", "Last.fm"),
       s". Updated ${library.builtAt.take(10)}."
-    )
+    ),
+    player.element
   )

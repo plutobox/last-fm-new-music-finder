@@ -9,7 +9,9 @@ final case class Song(
   genres: Vector[String],
   listeners: Int,
   plays: Int,
-  lovedBy: Int
+  lovedBy: Int,
+  year: Option[Int],
+  youtubeId: Option[String]
 ):
   val artistLower: String = artist.toLowerCase
   val titleLower: String = title.toLowerCase
@@ -19,6 +21,9 @@ final case class Song(
     def part(s: String) = js.URIUtils.encodeURIComponent(s).replace("%20", "+")
     s"https://www.last.fm/music/${part(artist)}/_/${part(title)}"
 
+  def youtubeSearchUrl: String =
+    s"https://www.youtube.com/results?search_query=${js.URIUtils.encodeURIComponent(s"$artist $title")}"
+
 enum SortBy(val key: String, val label: String):
   case MostListeners extends SortBy("listeners-desc", "Most listeners")
   case FewestListeners extends SortBy("listeners-asc", "Fewest listeners")
@@ -26,6 +31,8 @@ enum SortBy(val key: String, val label: String):
   case FewestPlays extends SortBy("plays-asc", "Fewest plays")
   case MostLoved extends SortBy("loved-desc", "Most loved")
   case FewestLoved extends SortBy("loved-asc", "Fewest loved")
+  case Newest extends SortBy("year-desc", "Newest")
+  case Oldest extends SortBy("year-asc", "Oldest")
   case ArtistAZ extends SortBy("artist-asc", "Artist, A to Z")
   case TitleAZ extends SortBy("title-asc", "Song, A to Z")
   case Shuffle extends SortBy("random", "Random")
@@ -47,6 +54,9 @@ final case class Query(
   maxPlays: String = "",
   minLoved: String = "",
   maxLoved: String = "",
+  yearFrom: String = "",
+  yearTo: String = "",
+  playableOnly: Boolean = false,
   limit: Int = 10
 )
 
@@ -71,6 +81,9 @@ object Songs:
       i
     val (artist, title, genres) = (column("artist"), column("song"), column("genres"))
     val (listeners, plays, loved) = (column("listeners"), column("plays"), column("loved_by"))
+    // Optional: older copies of the file don't have these.
+    val year = columns.indexOf("year")
+    val youtubeId = columns.indexOf("youtube_id")
     val rows = root.rows.asInstanceOf[js.Array[js.Array[js.Any]]]
     val songs = rows.iterator.map: r =>
       Song(
@@ -79,7 +92,9 @@ object Songs:
         genres = r(genres).asInstanceOf[js.Array[String]].toVector,
         listeners = r(listeners).asInstanceOf[Int],
         plays = r(plays).asInstanceOf[Int],
-        lovedBy = r(loved).asInstanceOf[Int]
+        lovedBy = r(loved).asInstanceOf[Int],
+        year = if year < 0 || r(year) == null then None else Some(r(year).asInstanceOf[Int]),
+        youtubeId = if youtubeId < 0 || r(youtubeId) == null then None else Some(r(youtubeId).asInstanceOf[String])
       )
     Library(songs.toVector, root.built_at.asInstanceOf[String])
 
@@ -90,6 +105,10 @@ object Songs:
     val (loL, hiL) = (number(q.minListeners), number(q.maxListeners))
     val (loP, hiP) = (number(q.minPlays), number(q.maxPlays))
     val (loH, hiH) = (number(q.minLoved), number(q.maxLoved))
+    val (loY, hiY) = (number(q.yearFrom), number(q.yearTo))
+    val filteringByYear = loY.isDefined || hiY.isDefined
+    // Sorted last either way: a song with no known year isn't the newest or the oldest.
+    val noYear = (s: Song) => s.year.isEmpty
 
     val matched = library.songs.filter: s =>
       (q.genres.isEmpty ||
@@ -97,7 +116,9 @@ object Songs:
       !s.genres.exists(q.excludedGenres) &&
       (artist.isEmpty || s.artistLower.contains(artist)) &&
       (title.isEmpty || s.titleLower.contains(title)) &&
-      inRange(s.listeners, loL, hiL) && inRange(s.plays, loP, hiP) && inRange(s.lovedBy, loH, hiH)
+      inRange(s.listeners, loL, hiL) && inRange(s.plays, loP, hiP) && inRange(s.lovedBy, loH, hiH) &&
+      (!filteringByYear || s.year.exists(inRange(_, loY, hiY))) &&
+      (!q.playableOnly || s.youtubeId.isDefined)
 
     // Ties fall back to artist and title, so a repeated query keeps the same order.
     val sorted = q.sort match
@@ -107,6 +128,8 @@ object Songs:
       case SortBy.FewestPlays     => matched.sortBy(s => (s.plays, s.listeners, s.artistLower, s.titleLower))
       case SortBy.MostLoved       => matched.sortBy(s => (-s.lovedBy, -s.listeners, s.artistLower, s.titleLower))
       case SortBy.FewestLoved     => matched.sortBy(s => (s.lovedBy, s.listeners, s.artistLower, s.titleLower))
+      case SortBy.Newest          => matched.sortBy(s => (noYear(s), -s.year.getOrElse(0), -s.listeners, s.artistLower, s.titleLower))
+      case SortBy.Oldest          => matched.sortBy(s => (noYear(s), s.year.getOrElse(0), -s.listeners, s.artistLower, s.titleLower))
       case SortBy.ArtistAZ        => matched.sortBy(s => (s.artistLower, s.titleLower))
       case SortBy.TitleAZ         => matched.sortBy(s => (s.titleLower, s.artistLower))
       case SortBy.Shuffle         => new Random(shuffleSeed).shuffle(matched)

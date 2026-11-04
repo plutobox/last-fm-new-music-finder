@@ -150,6 +150,105 @@
       .artist { font-weight: 700; }
       .tags { color: var(--soft); font-size: 0.875rem; }
 
+      .check { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; cursor: pointer; }
+      .check input { width: 1.25rem; min-height: 1.25rem; margin: 0; accent-color: var(--blue); }
+
+      .play {
+        display: inline-grid;
+        place-items: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        margin-top: 0.25rem;
+        color: var(--on-blue);
+        background: var(--blue);
+        border: 2px solid var(--blue);
+        border-radius: 50%;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .play-away { color: var(--blue); background: transparent; border-color: var(--line); }
+      .play-away:hover { border-color: var(--blue); }
+      tr.is-playing .title { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 3px; }
+
+      /* Room for the bar, so it never covers the last rows. */
+      .finder { padding-bottom: 6rem; }
+
+      .player { display: none; }
+      .player.is-open { display: block; }
+      .player-video {
+        position: fixed;
+        z-index: 2;
+        right: 1rem;
+        bottom: 5.5rem;
+        width: min(480px, calc(100vw - 2rem));
+        aspect-ratio: 16 / 9;
+        background: #000;
+        border-radius: 0.375rem;
+        overflow: hidden;
+      }
+      /* YouTube's minimum player size. */
+      .player-video.is-small { width: 200px; height: 200px; aspect-ratio: auto; }
+      .player-video iframe, .player-video > div { display: block; width: 100%; height: 100%; border: 0; }
+      .player-bar {
+        position: fixed;
+        z-index: 3;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.25rem 1.5rem;
+        padding: 0 1rem 0.5rem;
+        background: var(--panel);
+        border-top: 2px solid var(--line);
+      }
+      .player-seek {
+        grid-column: 1 / -1;
+        width: 100%;
+        min-height: 1rem;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        accent-color: var(--blue);
+        cursor: pointer;
+      }
+      .player-controls, .player-extras { display: flex; align-items: center; gap: 0.5rem; }
+      .player-icon, .player-main, .player-text { background: transparent; border: 0; cursor: pointer; border-radius: 0.375rem; }
+      .player-icon { width: 2.5rem; height: 2.5rem; font-size: 1.125rem; }
+      .player-main {
+        width: 3rem;
+        height: 3rem;
+        font-size: 1.25rem;
+        color: var(--on-blue);
+        background: var(--blue);
+        border-radius: 50%;
+      }
+      .player-text { min-height: 2.5rem; padding: 0 0.5rem; font-size: 0.875rem; }
+      .player-icon:hover, .player-text:hover { background: var(--line); }
+      .player-time { color: var(--soft); font-size: 0.875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .player-song { min-width: 0; }
+      .player-title {
+        font: 500 1.125rem/1.2 "Bricolage Grotesque", system-ui, sans-serif;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .player-artist, .player-problem { font-size: 0.875rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .player-artist { color: var(--soft); }
+      .player-volume { width: 6rem; min-height: 1rem; padding: 0; border: 0; background: transparent; accent-color: var(--blue); }
+
+      @media (max-width: 52rem) {
+        .finder { padding-bottom: 9rem; }
+        .player-bar { grid-template-columns: minmax(0, 1fr) auto; }
+        .player-song { grid-column: 1 / -1; grid-row: 2; }
+        .player-controls { grid-row: 3; }
+        .player-extras { grid-row: 3; }
+        .player-volume { display: none; }
+        .player-video { bottom: 8.75rem; }
+      }
+
       @media (max-width: 40rem) {
         thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
         table, tbody { display: block; }

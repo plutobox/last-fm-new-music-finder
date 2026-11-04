@@ -1,0 +1,71 @@
+name: Import MusicBrainz data
+
+# Adds release years and YouTube IDs from MusicBrainz's database dump, with no API calls. The next
+# Fetch top songs run publishes them to songs.json.
+on:
+  schedule:
+    - cron: "23 6 3 * *" # monthly, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: "Only report coverage, without changing the database"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: database-write
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
+      # Streamed, so the 7.7 GB archive is never stored. Only the needed columns of these tables reach the disk.
+      - name: Stream the needed columns from the latest MusicBrainz dump
+        shell: bash
+        run: |
+          base=https://data.metabrainz.org/pub/musicbrainz/data/fullexport
+          agent="last-fm-new-music-finder/1.0 ( https://github.com/${{ github.repository }} )"
+          latest=$(curl -fsS -A "$agent" "$base/LATEST")
+          echo "Dump: $latest"
+          df -h . | tail -1
+          mkdir -p dump
+          set -o pipefail
+          curl -fsS -A "$agent" --retry 5 "$base/$latest/mbdump.tar.bz2" \
+            | tar -xjf - --to-command="bash feature/scripts/mb-keep-columns.sh dump" \
+              mbdump/artist mbdump/artist_credit_name mbdump/recording mbdump/track mbdump/medium \
+              mbdump/release_country mbdump/release_unknown_country mbdump/l_recording_url mbdump/url
+          du -sh dump
+          df -h . | tail -1
+
+      - name: Import release years and YouTube IDs (decrypts, updates, re-encrypts)
+        env:
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+          # Scheduled runs have no inputs, so they save. Manual runs only check, unless told otherwise.
+          CHECK: ${{ inputs.check_only && '--check' || '' }}
+        run: node --max-old-space-size=12288 feature/scripts/import-musicbrainz.mjs --dump dump --db db/users.db.age $CHECK
+
+      - name: Upload the database to the release
+        if: ${{ !inputs.check_only }}
+        run: node feature/scripts/release-store.mjs upload db
