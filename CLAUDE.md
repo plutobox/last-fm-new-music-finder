@@ -40,13 +40,39 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 ## Crawled users database
 
 - `.github/workflows/crawl-users.yml` is **paused** (disabled in GitHub; turn it back on with `gh workflow enable crawl-users.yml`). When enabled, it runs every 2 hours and on demand. It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
-- The database is published age-encrypted at `gh-pages:data/users.db.age`. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
+- The database is published gzipped, age-encrypted and split into files of at most 90 MB at `gh-pages:data/users.db.age.000`, `.001`, and so on (`scripts/db-store.mjs`), so no file passes GitHub's 100 MB limit. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
 - Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
-- To inspect it locally, decrypt it outside the repo: `node scripts/decrypt.mjs users.db.age <temp>/users.db` (needs `LAST_FM_AGE_IDENTITY`).
+- See "Querying the data" below for how to read it.
 - `.github/workflows/fetch-top-tracks.yml` runs hourly (and on demand). It runs `scripts/fetch-top-tracks.mjs`, which makes two `user.getTopTracks` requests per user (`period=overall` and `period=12month`, `limit=50`, no pagination), starting with `LAST_FM_USERNAME` and then the fewest friend-hops. **It's a one-time pull: never refresh a user's data.** Anyone with `users.songs_fetched_at` set is never requested again.
 - Song data is normalized. Tables: `artists`, `songs` (each song stored once), `periods`, `user_songs` (user → song, by ID, with rank and plays), `user_song_stats` (per user and period: play totals, top song and artist, artist concentration, overlap between the two periods, `similarity_to_me`), `song_runs`. Views with readable names: `user_songs_named`, `song_stats`.
-- Both scripts stop at 90 MB: Last.fm's API terms cap stored data at 100 MB (section 4.3.4), and GitHub rejects files over 100 MB.
+- There is no cap on total database size. The owner chose this knowing Last.fm's API terms cap stored data at 100 MB (section 4.3.4).
 - The repo is public, so Actions logs are too: the scripts log counts only, never usernames.
+
+## Querying the data
+
+The data isn't in the working tree on `main`, and a local copy goes stale after every workflow run. To answer any question about it, always pull the latest `gh-pages` first, then query a decrypted copy:
+
+1. **Run this in the Bash tool, not PowerShell.** PowerShell's `>` corrupts binary files. It fetches the database (a single `users.db.age` or split `users.db.age.000`, `.001`, and so on) and decrypts it into a temp folder outside the repo:
+   ```bash
+   TMP="<scratchpad or temp folder>"; mkdir -p "$TMP/enc"
+   git fetch origin gh-pages --quiet
+   for f in $(git ls-tree -r --name-only origin/gh-pages | grep '^data/users.db.age'); do
+     git show "origin/gh-pages:$f" > "$TMP/enc/$(basename "$f")"
+   done
+   export LAST_FM_AGE_IDENTITY="$(grep '^AGE-SECRET-KEY-' "$HOME/.last-fm-new-music-finder.age.key")"
+   node --no-warnings scripts/decrypt.mjs "$TMP/enc/users.db.age" "$TMP/users.db"
+   ```
+   Pass the name without the number to `decrypt.mjs`; it joins any parts itself.
+2. **Query it read-only with SQL** from a small script in that temp folder, using `node:sqlite` (the `sqlite3` CLI may not be installed):
+   ```js
+   import { DatabaseSync } from "node:sqlite";
+   const db = new DatabaseSync(process.argv[2], { readOnly: true });
+   console.log(db.prepare("SELECT artist, song, listeners_in_sample FROM song_stats WHERE period = ? ORDER BY listeners_in_sample DESC LIMIT 10").all("overall"));
+   ```
+   Start with the `song_stats` and `user_songs_named` views, which have readable names. Check row counts and `song_runs` so answers can say how much data they cover.
+3. **Delete the decrypted copy when finished,** and never commit it or print the private key. The plaintext contains other users' profile data, so don't publish it either.
+
+The database has no genre data. For genre questions, use Last.fm's `artist.getTopTags` and say that the label comes from artist tags, not from the song.
 
 ## Last.fm Authentication
 

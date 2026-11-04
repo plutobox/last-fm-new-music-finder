@@ -1,14 +1,13 @@
 // Fetches each crawled user's top songs via user.getTopTracks and stores them, normalized, in the users database.
 // Two requests per user: period=overall and period=12month, first 50 songs each, no pagination.
 // Usage: node scripts/fetch-top-tracks.mjs --db data/users.db.age [--max-users 5000] [--minutes 40]
-//                                          [--max-db-mb 90]
+//                                          [--part-mb 90]
 //
 // Order: LAST_FM_USERNAME first (similarity is measured against that user), then fewest friend-hops first.
 // Each user is pulled once, ever: anyone with songs_fetched_at set is never requested again.
 //
-// Stops early, keeping its progress, on: --minutes, --max-db-mb, or a run of API failures. The size cap
-// exists because Last.fm's API terms limit stored data to 100 MB (section 4.3.4) and GitHub rejects
-// files over 100 MB.
+// Stops early, keeping its progress, on: --minutes or a run of API failures.
+// A ".age" --db is split into files of at most --part-mb (see db-store.mjs).
 //
 // Needs LAST_FM_API_KEY. A ".age" --db also needs LAST_FM_AGE_IDENTITY.
 // Logs only print counts, never usernames: Actions logs on a public repo are public.
@@ -16,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { Encrypter, Decrypter, identityToRecipient } from "age-encryption";
+import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -38,13 +37,13 @@ const FATAL_ERRORS = new Set([10, 26]); // bad or suspended API key: nothing els
 const dbPath = args.db ?? "data/users.db";
 const maxUsers = Number(args["max-users"] ?? 5000);
 const deadline = Date.now() + Number(args.minutes ?? 40) * 60_000;
-const maxDbBytes = Number(args["max-db-mb"] ?? 90) * 1024 * 1024;
+const partMb = Number(args["part-mb"] ?? DEFAULT_PART_MB);
 const me = process.env.LAST_FM_USERNAME?.trim();
 const userAgent = process.env.LAST_FM_APPLICATION_NAME ?? "last-fm-new-music-finder";
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 const encrypted = dbPath.endsWith(".age");
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");
-if (!fs.existsSync(dbPath)) throw new Error(`${dbPath} does not exist; run crawl-friends.mjs first`);
+if (!(encrypted ? encryptedDbExists(dbPath) : fs.existsSync(dbPath))) throw new Error(`${dbPath} does not exist; run crawl-friends.mjs first`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toISOString();
@@ -135,11 +134,7 @@ function computeStats(rows, total) {
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-songs-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) {
-  const d = new Decrypter();
-  d.addIdentity(ageIdentity);
-  fs.writeFileSync(localDb, await d.decrypt(fs.readFileSync(dbPath)));
-}
+if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
 
 const db = new DatabaseSync(localDb);
 db.exec(`
@@ -382,7 +377,6 @@ let fetched = 0, errored = 0, consecutiveFailures = 0, stopReason = "queue finis
 
 outer: for (const user of queue) {
   if (Date.now() >= deadline) { stopReason = "time limit"; break; }
-  if (dbBytes() >= maxDbBytes) { stopReason = "size limit"; break; }
 
   const results = {};
   for (const period of PERIODS) {
@@ -423,16 +417,12 @@ db.exec("VACUUM");
 const finalBytes = dbBytes();
 db.close();
 
-if (encrypted) {
-  const e = new Encrypter();
-  e.addRecipient(await identityToRecipient(ageIdentity));
-  fs.writeFileSync(dbPath, await e.encrypt(fs.readFileSync(localDb)));
-}
+const files = encrypted ? await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), partMb) : 1;
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
   `Fetched ${fetched} users (${errored} errored, ${remaining} not fetched yet) with ${requests} requests. ` +
   `Database: ${totalSongs} songs, ${totalArtists} artists, ${totalRows} user-song rows, ` +
-  `${(finalBytes / 1048576).toFixed(1)} MB. Stopped: ${stopReason}`
+  `${(finalBytes / 1048576).toFixed(1)} MB in ${files} file(s). Stopped: ${stopReason}`
 );
 if (!/queue finished|time limit/.test(stopReason)) console.log(`::warning::Stopped early: ${stopReason}`);

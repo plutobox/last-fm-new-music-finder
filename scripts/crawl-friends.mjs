@@ -11,7 +11,7 @@
 // friendships table instead of calling the API again.
 //
 // Needs LAST_FM_API_KEY (and optionally LAST_FM_APPLICATION_NAME for the User-Agent) in the environment.
-// If --db ends in ".age", the file is decrypted to a temp dir, updated, and re-encrypted in place;
+// If --db ends in ".age", it's read from and written to split encrypted files (see db-store.mjs);
 // LAST_FM_AGE_IDENTITY (an age private key) must be set. The recipient is derived from it.
 //
 // Logs only print counts, never usernames: Actions logs on a public repo are public.
@@ -19,7 +19,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { Encrypter, Decrypter, identityToRecipient } from "age-encryption";
+import { Decrypter } from "age-encryption";
+import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -58,12 +59,6 @@ async function decrypt(file) {
   return d.decrypt(fs.readFileSync(file)); // Uint8Array
 }
 
-async function encrypt(bytes) {
-  const e = new Encrypter();
-  e.addRecipient(await identityToRecipient(ageIdentity));
-  return e.encrypt(bytes);
-}
-
 // ---- Last.fm ---------------------------------------------------------------------------------
 
 let requests = 0;
@@ -100,7 +95,7 @@ async function getFriendsPage(user, page) {
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-crawl-"));
 const encrypted = dbPath.endsWith(".age");
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted && fs.existsSync(dbPath)) fs.writeFileSync(localDb, await decrypt(dbPath));
+if (encrypted && encryptedDbExists(dbPath)) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
 fs.mkdirSync(path.dirname(localDb), { recursive: true });
 
 const db = new DatabaseSync(localDb);
@@ -199,15 +194,6 @@ if (importJson && q.count.get().n === 0 && fs.existsSync(importJson)) {
 }
 
 // ---- Crawl -----------------------------------------------------------------------------------
-
-// Last.fm's API terms cap stored data at 100 MB (section 4.3.4), and GitHub rejects files over 100 MB.
-const MAX_DB_BYTES = 90 * 1024 * 1024;
-if (fs.statSync(localDb).size >= MAX_DB_BYTES) {
-  console.log("::warning::Database is at the 90 MB limit, so no users were crawled");
-  db.close();
-  fs.rmSync(workDir, { recursive: true, force: true });
-  process.exit(0);
-}
 
 const startedAt = now();
 const runId = db.prepare("INSERT INTO runs (started_at) VALUES (?)").run(startedAt).lastInsertRowid;
@@ -308,10 +294,7 @@ const edges = db.prepare("SELECT count(*) AS n FROM friendships").get().n;
 db.exec("VACUUM");
 db.close();
 
-if (encrypted) {
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  fs.writeFileSync(dbPath, await encrypt(fs.readFileSync(localDb)));
-}
+if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
