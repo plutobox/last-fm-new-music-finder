@@ -39,7 +39,7 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 
 ## Crawled users database
 
-- `.github/workflows/crawl-users.yml` is **paused** (disabled in GitHub; turn it back on with `gh workflow enable crawl-users.yml`). When enabled, it runs every 2 hours and on demand. It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
+- `.github/workflows/crawl-users.yml` runs every 2 hours and on demand. To pause it, use `gh workflow disable crawl-users.yml`. It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
 - The database is published gzipped, age-encrypted and split into files of at most 90 MB at `gh-pages:data/users.db.age.000`, `.001`, and so on (`scripts/db-store.mjs`), so no file passes GitHub's 100 MB limit. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
 - Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
 - See "Querying the data" below for how to read it.
