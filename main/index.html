@@ -112,6 +112,9 @@
       .genre-count { font-size: 0.75rem; color: var(--soft); }
       .genre.is-on { background: var(--gold); border-color: var(--gold); color: #17134f; }
       .genre.is-on .genre-count { color: #17134f; }
+      .genre.is-out { border-style: dashed; border-color: var(--soft); color: var(--soft); text-decoration: line-through; }
+      .genre.is-out:hover { border-color: var(--blue); }
+      .hint { margin: 0 0 0.625rem; color: var(--soft); font-size: 0.875rem; }
 
       .reset, .action {
         justify-self: start;
@@ -169,7 +172,7 @@
   <body>
     <div id="app"></div>
     <!-- relative path so it works under /last-fm-new-music-finder/<branch>/ -->
-    <!-- CI replaces e83991d10c73e662dedf36caf51c6143865b1bce, so a browser can't pair a new page with a cached older script -->
-    <script src="./main.js?v=e83991d10c73e662dedf36caf51c6143865b1bce"></script>
+    <!-- CI replaces f02811f6109c017ce69a436da625c2a768ac67de, so a browser can't pair a new page with a cached older script -->
+    <script src="./main.js?v=f02811f6109c017ce69a436da625c2a768ac67de"></script>
   </body>
 </html>
