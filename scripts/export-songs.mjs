@@ -1,6 +1,6 @@
 // Builds the one public, unencrypted file: a flat table of songs with their genres and aggregate counts.
 // Only reads the database, which it opens read-only. No usernames, profiles or per-user data go in.
-// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json [--max-mb 5]
+// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json [--max-mb 50]
 //
 // Songs need at least MIN_LISTENERS listeners, so a row can't simply be one person's listening. If the table
 // passes --max-mb, the least popular rows are dropped. An unchanged table leaves the file untouched, so the
@@ -46,7 +46,7 @@ const GENRES = Object.fromEntries(Object.entries({
 
 const dbPath = args.db ?? "data/users.db";
 const out = args.out ?? "data/songs.json";
-const maxBytes = Number(args["max-mb"] ?? 5) * 1024 * 1024;
+const maxBytes = Number(args["max-mb"] ?? 50) * 1024 * 1024;
 const encrypted = dbPath.endsWith(".age");
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");

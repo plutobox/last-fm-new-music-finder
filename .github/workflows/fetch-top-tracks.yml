@@ -97,7 +97,7 @@ jobs:
       - name: Build the public songs file (no usernames or per-user data)
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
-        run: node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json --max-mb 5
+        run: node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json --max-mb 50
 
       - name: Commit songs.json to gh-pages
         uses: EndBug/add-and-commit@v9
