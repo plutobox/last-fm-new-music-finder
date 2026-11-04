@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
+      LAST_FM_RATE_LIMIT_FILE: rate-limit-hit # lets one step's rate-limit stop reach the later steps
     steps:
       - uses: actions/checkout@v4
         with:
@@ -66,3 +67,11 @@ jobs:
 
       - name: Upload the database to the release
         run: node feature/scripts/release-store.mjs upload db
+
+      # After the upload, so progress is kept. A red run makes a rate-limit stop hard to miss.
+      - name: Fail the run if Last.fm rate limited us
+        run: |
+          if [ -f rate-limit-hit ]; then
+            echo "::error::Last.fm rate limited this run, so it stopped sending requests. Check before running again."
+            exit 1
+          fi

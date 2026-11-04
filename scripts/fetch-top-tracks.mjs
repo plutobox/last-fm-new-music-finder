@@ -21,6 +21,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { createClient } from "./lastfm-client.mjs";
+import { startProgress } from "./progress.mjs";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 
 const args = Object.fromEntries(
@@ -37,11 +39,7 @@ const PERIODS = [{ id: 1, name: "overall" }, { id: 2, name: "12month" }];
 const LIMIT = 50;
 const LOVED_PAGE_SIZE = Number(args["loved-page-size"] ?? 1000);
 const CONCURRENCY = Number(args.concurrency ?? 3);
-const MIN_INTERVAL_MS = 1000 / Number(args["max-per-second"] ?? 4);
-const MAX_INTERVAL_MS = 5000;
 const MAX_CONSECUTIVE_FAILURES = 20;
-const PERMANENT_ERRORS = new Set([6, 17]); // user not found / private: specific to this user, don't retry
-const FATAL_ERRORS = new Set([10, 26]); // bad or suspended API key: nothing else will work either
 
 const dbPath = args.db ?? "data/users.db";
 const maxUsers = Number(args["max-users"] ?? 5000);
@@ -54,63 +52,12 @@ const encrypted = dbPath.endsWith(".age");
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");
 if (!(encrypted ? encryptedDbExists(dbPath) : fs.existsSync(dbPath))) throw new Error(`${dbPath} does not exist; run crawl-friends.mjs first`);
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toISOString();
 
 // ---- Last.fm ---------------------------------------------------------------------------------
 
-let requests = 0, rateLimited = 0;
-
-// One speed limit shared by every parallel request: each takes the next time slot.
-let intervalMs = MIN_INTERVAL_MS, nextSlot = 0;
-async function waitForSlot() {
-  const t = Date.now();
-  const at = Math.max(t, nextSlot);
-  nextSlot = at + intervalMs;
-  if (at > t) await sleep(at - t);
-}
-function slowDown() {
-  rateLimited++;
-  intervalMs = Math.min(intervalMs * 2, MAX_INTERVAL_MS);
-  nextSlot = Math.max(nextSlot, Date.now() + MAX_INTERVAL_MS); // everyone pauses, not just this request
-}
-function recover() {
-  intervalMs = Math.max(MIN_INTERVAL_MS, intervalMs * 0.99);
-}
-
-// Returns data[key], or { error, kind: "permanent" | "fatal" | "transient" }.
-async function apiGet(params, key) {
-  const url = new URL("https://ws.audioscrobbler.com/2.0/");
-  url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
-  let last = "retries-exhausted";
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await waitForSlot();
-    requests++;
-    let res, data;
-    try {
-      res = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(30_000) });
-      data = await res.json().catch(() => ({}));
-    } catch (e) {
-      last = `network: ${e.name}`; // e.message could include the URL, which holds the API key
-      await sleep(2000 * (attempt + 1));
-      continue;
-    }
-    if (data.error === 29 || res.status === 429) slowDown();
-    if (data.error) {
-      const message = `${data.error}: ${data.message ?? ""}`.trim();
-      if (PERMANENT_ERRORS.has(data.error)) return { error: message, kind: "permanent" };
-      if (FATAL_ERRORS.has(data.error)) return { error: message, kind: "fatal" };
-      last = `api error ${data.error}`;
-    } else if (res.ok && data[key]) {
-      recover();
-      return data[key];
-    } else {
-      last = `http ${res.status}`;
-    }
-    await sleep(2000 * (attempt + 1)); // rate limited (29), temporary (8, 11, 16) or server trouble
-  }
-  return { error: last, kind: "transient" };
-}
+const client = createClient({ apiKey, userAgent, maxPerSecond: Number(args["max-per-second"] ?? 4) });
+const { apiGet } = client;
 
 const asArray = (x) => (Array.isArray(x) ? x : x ? [x] : []);
 
@@ -483,7 +430,7 @@ function stop(reason) {
 
 // Stops the whole run on an API key problem or a run of failures.
 function noteFailure(r) {
-  if (r.kind === "fatal") stop(`api key problem (${r.error})`);
+  if (r.kind === "fatal") stop(`Last.fm stopped us: ${r.error}`);
   else if (r.kind === "transient" && ++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
     stop(`repeated failures (${r.error})`);
   }
@@ -523,27 +470,41 @@ async function processUser(user) {
   }
 
   processed++;
-  if (processed % 250 === 0) {
-    console.log(`users ${processed}, top songs ${fetched}, loved ${lovedFetched}, errors ${errored}, requests ${requests}, db ${(dbBytes() / 1048576).toFixed(1)} MB`);
-  }
 }
 
 // Saves are synchronous, so parallel workers can't interleave a database transaction.
 let processed = 0, nextUser = 0;
 const fetchStart = Date.now();
+const progress = startProgress({
+  label: "users",
+  total: queue.length,
+  deadline,
+  everySeconds: Number(args["log-seconds"] ?? 30),
+  getCounts: () => ({
+    done: processed,
+    errors: errored,
+    requests: client.stats.requests,
+    rateLimited: client.stats.rateLimited,
+    extra: `${fetched} top songs, ${lovedFetched} loved, db ${(dbBytes() / 1048576).toFixed(1)} MB`,
+  }),
+});
 await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
   while (!stopped && nextUser < queue.length) {
     if (Date.now() >= deadline) { stop("time limit"); break; }
     await processUser(queue[nextUser++]);
   }
 }));
-const perSecond = requests / Math.max(1, (Date.now() - fetchStart) / 1000);
+progress.stop();
+const perSecond = client.stats.requests / Math.max(1, (Date.now() - fetchStart) / 1000);
 
-if (fetched > 0) updateSimilarity();
+if (fetched > 0) {
+  console.log("Updating similarity scores...");
+  updateSimilarity();
+}
 
 db.prepare(
   "UPDATE song_runs SET finished_at = ?, users_fetched = ?, users_loved = ?, users_errored = ?, requests = ?, stop_reason = ? WHERE id = ?"
-).run(now(), fetched, lovedFetched, errored, requests, stopReason, runId);
+).run(now(), fetched, lovedFetched, errored, client.stats.requests, stopReason, runId);
 
 const count = (sql) => db.prepare(sql).get().n;
 const remaining = count("SELECT count(*) AS n FROM users WHERE songs_fetched_at IS NULL");
@@ -552,6 +513,7 @@ const totalLoved = count("SELECT count(*) AS n FROM user_loved_songs");
 const totalSongs = count("SELECT count(*) AS n FROM songs");
 const totalArtists = count("SELECT count(*) AS n FROM artists");
 const totalRows = count("SELECT count(*) AS n FROM user_songs");
+console.log("Compacting and saving the database...");
 db.exec("VACUUM");
 const finalBytes = dbBytes();
 db.close();
@@ -561,7 +523,7 @@ fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
   `Top songs: ${fetched} users (${remaining} left). Loved songs: ${lovedFetched} users (${remainingLoved} left). ` +
-  `${errored} errored, ${requests} requests (${perSecond.toFixed(1)}/s, ${rateLimited} rate limited). Database: ${totalSongs} songs, ${totalArtists} artists, ` +
+  `${errored} errored, ${client.stats.requests} requests (${perSecond.toFixed(1)}/s, ${client.stats.rateLimited} rate limited). Database: ${totalSongs} songs, ${totalArtists} artists, ` +
   `${totalRows} top-song rows, ${totalLoved} loved rows, ` +
   `${(finalBytes / 1048576).toFixed(1)} MB in ${files} file(s). Stopped: ${stopReason}`
 );

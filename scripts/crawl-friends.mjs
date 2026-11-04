@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Decrypter } from "age-encryption";
+import { createClient } from "./lastfm-client.mjs";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 
 const args = Object.fromEntries(
@@ -43,13 +44,12 @@ const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 const needsKey = dbPath.endsWith(".age") || importJson?.endsWith(".age");
 if (needsKey && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but a .age file was given");
 const userAgent = process.env.LAST_FM_APPLICATION_NAME ?? "last-fm-new-music-finder";
-const DELAY_MS = 250; // ~4 req/s, under Last.fm's ~5/s limit
+const client = createClient({ apiKey, userAgent, maxPerSecond: 4 });
 
 if (explicitSeeds.length === 0 && !(randomSeeds > 0)) {
   throw new Error("No seeds given (--seeds a,b,c or --random-seeds N)");
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const now = () => new Date().toISOString();
 const int = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 
@@ -61,33 +61,16 @@ async function decrypt(file) {
 
 // ---- Last.fm ---------------------------------------------------------------------------------
 
-let requests = 0;
 async function getFriendsPage(user, page) {
-  const url = new URL("https://ws.audioscrobbler.com/2.0/");
-  url.search = new URLSearchParams({
-    method: "user.getFriends", user, page: String(page), limit: "200",
-    api_key: apiKey, format: "json",
-  });
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await sleep(DELAY_MS);
-    requests++;
-    const res = await fetch(url, { headers: { "User-Agent": userAgent } });
-    const data = await res.json().catch(() => ({}));
-    if (data.error === 29 || res.status === 429 || res.status >= 500) { // rate limited / server
-      await sleep(2000 * (attempt + 1));
-      continue;
-    }
-    // Only 6 (not found) and 17 (private) are about this user. Others, like a bad API key, must not mark them done.
-    if (data.error) return { friends: [], error: `${data.error}: ${data.message ?? ""}`.trim(), permanent: data.error === 6 || data.error === 17 };
-    const f = data.friends?.user ?? [];
-    const attr = data.friends?.["@attr"] ?? {};
-    return {
-      friends: Array.isArray(f) ? f : [f],
-      totalPages: Number(attr.totalPages ?? 1),
-      total: int(attr.total),
-    };
-  }
-  return { friends: [], error: "retries-exhausted", permanent: false };
+  const r = await client.apiGet({ method: "user.getFriends", user, page: String(page), limit: "200" }, "friends");
+  if (r.error) return { friends: [], error: r.error, permanent: r.kind === "permanent", fatal: r.kind === "fatal" };
+  const f = r.user ?? [];
+  const attr = r["@attr"] ?? {};
+  return {
+    friends: Array.isArray(f) ? f : [f],
+    totalPages: Number(attr.totalPages ?? 1),
+    total: int(attr.total),
+  };
 }
 
 // ---- Database --------------------------------------------------------------------------------
@@ -206,8 +189,8 @@ if (seeds.length === 0) {
 tx(() => { for (const s of seeds) q.insertBare.run(s, 0, startedAt); });
 console.log(`Seeds: ${seeds.length}`);
 
-let added = 0, errors = 0;
-const full = () => added >= maxUsers;
+let added = 0, errors = 0, halted = null; // halted: rate limited or a bad API key, so no more requests
+const full = () => added >= maxUsers || halted !== null;
 const visited = new Set(); // lowercase names expanded or queued this run
 
 function saveFriends(user, userDepth, friends) {
@@ -244,6 +227,10 @@ async function expand(name) {
   while (page <= Math.min(totalPages, maxPagesPerUser)) {
     if (full()) { stoppedEarly = true; break; }
     const r = await getFriendsPage(name, page);
+    if (r.fatal) {
+      halted = r.error;
+      return names;
+    }
     if (r.error) {
       errors++;
       // Permanent errors (private / deleted user) are marked crawled so they aren't retried.
@@ -279,14 +266,14 @@ for (let depth = 0; depth < maxDepth && frontier.length && !full(); depth++) {
   }
   console.log(
     `depth ${depth}: expanded ${expanded} of ${frontier.length} queued users, ` +
-    `new so far ${added}, requests ${requests}`
+    `new so far ${added}, requests ${client.stats.requests}`
   );
   frontier = next;
 }
 
 db.prepare(
   "UPDATE runs SET finished_at = ?, seed_count = ?, new_users = ?, requests = ?, errors = ? WHERE id = ?"
-).run(now(), seeds.length, added, requests, errors, runId);
+).run(now(), seeds.length, added, client.stats.requests, errors, runId);
 
 const total = q.count.get().n;
 const uncrawled = db.prepare("SELECT count(*) AS n FROM users WHERE crawled_at IS NULL").get().n;
@@ -299,5 +286,6 @@ fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
   `Wrote ${dbPath}: ${total} users (${uncrawled} not crawled yet), ${edges} friendships. ` +
-  `New this run: ${added}, requests: ${requests}, errors: ${errors}`
+  `New this run: ${added}, requests: ${client.stats.requests}, errors: ${errors}`
 );
+if (halted) console.log(`::warning::Stopped early: ${halted}`);

@@ -57,18 +57,28 @@ const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
 if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
 const db = new DatabaseSync(localDb, { readOnly: true });
 
-const artistGenres = new Map();
-const tagRows = db.prepare(`
-  SELECT at.artist_id, t.name FROM artist_tags at JOIN tags t ON t.id = at.tag_id
-  WHERE at.count >= ? ORDER BY at.artist_id, at.count DESC, t.name
-`).iterate(MIN_TAG_COUNT);
-for (const r of tagRows) {
-  const genre = GENRES[r.name.toLowerCase()];
-  if (!genre) continue;
-  const list = artistGenres.get(r.artist_id) ?? [];
-  if (!list.includes(genre)) list.push(genre);
-  artistGenres.set(r.artist_id, list);
+console.log("Reading the database...");
+// Adds rows of { id, name } to a map of id -> genres, in the order given and without repeats.
+function collectGenres(rows) {
+  const out = new Map();
+  for (const r of rows) {
+    const genre = GENRES[r.name.toLowerCase()];
+    if (!genre) continue;
+    const list = out.get(r.id) ?? [];
+    if (!list.includes(genre)) list.push(genre);
+    out.set(r.id, list);
+  }
+  return out;
 }
+
+const artistGenres = collectGenres(db.prepare(`
+  SELECT at.artist_id AS id, t.name FROM artist_tags at JOIN tags t ON t.id = at.tag_id
+  WHERE at.count >= ? ORDER BY at.artist_id, at.count DESC, t.name
+`).iterate(MIN_TAG_COUNT));
+const songGenres = collectGenres(db.prepare(`
+  SELECT st.song_id AS id, t.name FROM song_tags st JOIN tags t ON t.id = st.tag_id
+  ORDER BY st.song_id, st.position
+`).iterate());
 
 const candidates = db.prepare(`
   WITH listeners AS (
@@ -83,7 +93,7 @@ const candidates = db.prepare(`
     GROUP BY song_id
   ),
   loved AS (SELECT song_id, count(*) AS n FROM user_loved_songs GROUP BY song_id)
-  SELECT s.artist_id, a.name AS artist, s.name AS song, l.n AS listeners,
+  SELECT s.id AS song_id, s.artist_id, a.name AS artist, s.name AS song, l.n AS listeners,
          coalesce(p.n, 0) AS plays, coalesce(h.n, 0) AS loved_by
   FROM listeners l
   JOIN songs s ON s.id = l.song_id
@@ -98,15 +108,18 @@ fs.rmSync(workDir, { recursive: true, force: true });
 
 const wrapperBytes = 200;
 const rows = [];
-let bytes = wrapperBytes, untagged = 0, droppedForSize = 0;
+let bytes = wrapperBytes, untagged = 0, droppedForSize = 0, fromSong = 0, fromArtist = 0;
 for (const c of candidates) {
-  const genres = artistGenres.get(c.artist_id);
+  // A song's own tags win. Without any usable ones, it takes its artist's.
+  const own = songGenres.get(c.song_id);
+  const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
   const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by];
   const size = Buffer.byteLength(JSON.stringify(row)) + 2;
   if (bytes + size > maxBytes) { droppedForSize++; continue; }
   bytes += size;
   rows.push(row);
+  if (own) fromSong++; else fromArtist++;
 }
 
 const previous = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : null;
@@ -121,5 +134,6 @@ if (changed) {
 
 console.log(
   `${changed ? "Wrote" : "No change to"} ${out}: ${rows.length} songs, ${(fs.statSync(out).size / 1048576).toFixed(2)} MB. ` +
+  `Genres from the song ${fromSong}, from the artist ${fromArtist}. ` +
   `Left out: ${untagged} with no known genre yet, ${droppedForSize} over the size limit.`
 );

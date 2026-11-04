@@ -11,6 +11,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 import { createClient } from "./lastfm-client.mjs";
+import { startProgress } from "./progress.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -88,10 +89,24 @@ const queue = db.prepare(`
   ORDER BY coalesce(p.n, 0) DESC, a.id
   LIMIT ?
 `).all(maxArtists);
-console.log(`Queued ${queue.length} artists`);
+const remainingAtStart = db.prepare("SELECT count(*) AS n FROM artists a LEFT JOIN artist_tag_fetches f ON f.artist_id = a.id WHERE f.artist_id IS NULL").get().n;
+console.log(`Queued ${queue.length} artists, out of ${remainingAtStart} still without tags`);
 
 let fetched = 0, errored = 0, consecutiveFailures = 0, next = 0, stopped = false, stopReason = "queue finished";
 const stop = (reason) => { if (!stopped) stopReason = reason; stopped = true; };
+
+const progress = startProgress({
+  label: "artists",
+  total: queue.length,
+  deadline,
+  everySeconds: Number(args["log-seconds"] ?? 30),
+  getCounts: () => ({
+    done: fetched + errored,
+    errors: errored,
+    requests: client.stats.requests,
+    rateLimited: client.stats.rateLimited,
+  }),
+});
 
 await Promise.all(Array.from({ length: concurrency }, async () => {
   while (!stopped && next < queue.length) {
@@ -99,7 +114,7 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
     const artist = queue[next++];
     const r = await client.apiGet({ method: "artist.getTopTags", artist: artist.name }, "toptags");
     if (r.error) {
-      if (r.kind === "fatal") { stop(`api key problem (${r.error})`); break; }
+      if (r.kind === "fatal") { stop(`Last.fm stopped us: ${r.error}`); break; }
       if (r.kind === "transient") {
         if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) stop(`repeated failures (${r.error})`);
         continue; // left unfetched, so a later run retries this artist
@@ -118,12 +133,14 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
     } catch (e) { db.exec("ROLLBACK"); throw e; }
     fetched++;
     consecutiveFailures = 0;
-    if (fetched % 500 === 0) console.log(`artists ${fetched}, errors ${errored}, requests ${client.stats.requests}`);
   }
 }));
 
+progress.stop();
+
 const left = db.prepare("SELECT count(*) AS n FROM artists a LEFT JOIN artist_tag_fetches f ON f.artist_id = a.id WHERE f.artist_id IS NULL").get().n;
 db.close();
+console.log("Saving the database...");
 if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 

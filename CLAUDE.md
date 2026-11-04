@@ -46,8 +46,8 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 - `.github/workflows/fetch-top-tracks.yml` runs hourly (and on demand). It runs `scripts/fetch-top-tracks.mjs`, which makes two `user.getTopTracks` requests per user (`period=overall` and `period=12month`, `limit=50`, no pagination), starting with `LAST_FM_USERNAME` and then the fewest friend-hops. **It's a one-time pull: never refresh a user's data.** Anyone with `users.songs_fetched_at` set is never requested again.
 - The same workflow calls `user.getLovedTracks` for each user (every page, also a one-time pull, tracked by `users.loved_fetched_at`). Loved and top songs share the `songs` and `artists` tables. Table: `user_loved_songs`. Views: `user_loved_songs_named`, `user_merged_songs` (each user's top and loved songs merged, one row per user and song).
 - Requests run in parallel inside one run (3 users at a time, sharing a limit of 4 per second that slows down if Last.fm reports rate limiting). Don't run these workflows in parallel with each other: each one rewrites the whole database, so they share a `concurrency` group.
-- That workflow also runs `scripts/fetch-artist-tags.mjs` (`artist.getTopTags`, one request per artist, once ever, most-listened first; only adds to `tags`, `artist_tags` and `artist_tag_fetches`) and then `scripts/export-songs.mjs`.
-- **The only unencrypted data is `gh-pages:data/songs.json`:** one flat, deliberately unnormalized table (`artist`, `song`, `genres`, `listeners`, `plays`, `loved_by`) rebuilt from the database, under 50 MB, for the website to read. It holds aggregates only: never add usernames, profiles or per-user rows. Songs need at least 2 listeners. `genres` come from an allowlist in `export-songs.mjs` and describe the artist, not the individual song. Everything else stays encrypted.
+- That workflow also runs `scripts/fetch-artist-tags.mjs` (`artist.getTopTags`, one request per artist, once ever, most-listened first; `tags`, `artist_tags`, `artist_tag_fetches`), `scripts/fetch-track-info.mjs` (`track.getInfo`, one request per song, once ever, most-listened first; adds global counts, URL and wiki text to `songs`, plus `albums` and `song_tags`; tracked by `songs.info_fetched_at`) and then `scripts/export-songs.mjs`.
+- **The only unencrypted data is `gh-pages:data/songs.json`:** one flat, deliberately unnormalized table (`artist`, `song`, `genres`, `listeners`, `plays`, `loved_by`) rebuilt from the database, under 50 MB, for the website to read. It holds aggregates only: never add usernames, profiles or per-user rows. Songs need at least 2 listeners. `genres` come from an allowlist in `export-songs.mjs`, using the song's own tags, or its artist's when it has none. Everything else stays encrypted.
 - Song data is normalized. Tables: `artists`, `songs` (each song stored once), `periods`, `user_songs` (user → song, by ID, with rank and plays), `user_song_stats` (per user and period: play totals, top song and artist, artist concentration, overlap between the two periods, `similarity_to_me`), `song_runs`. Views with readable names: `user_songs_named`, `song_stats`.
 - The repo is public, so Actions logs are too: the scripts log counts only, never usernames.
 
@@ -73,6 +73,10 @@ The data isn't in the working tree, and a local copy goes stale after every work
 3. **Delete the decrypted copy when finished,** and never commit it or print the private key. The plaintext contains other users' profile data, so don't publish it either.
 
 The database has no genre data. For genre questions, use Last.fm's `artist.getTopTags` and say that the label comes from artist tags, not from the song.
+
+## Rate limits
+
+Last.fm can suspend the API key for exceeding its limits. **Every Last.fm request must go through `scripts/lastfm-client.mjs`; never call the API with a separate `fetch`.** The client caps requests at 4 per second, and each rate-limit response (error 29 or HTTP 429) pauses all requests for longer and halves the speed. Three in a row with no success stops the script and the rest of the workflow run, and the run ends red. Don't retry a run stopped this way without finding out why it happened. Running scripts locally uses the same key as the workflows, so avoid doing it during a run.
 
 ## Last.fm Authentication
 
