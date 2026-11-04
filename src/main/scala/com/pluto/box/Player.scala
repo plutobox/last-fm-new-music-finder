@@ -51,7 +51,8 @@ final class Player:
           onError = ((e: js.Dynamic) => onError(e.data.asInstanceOf[Int])): js.Function1[js.Dynamic, Unit]
         )
       )
-      yt = Some(js.Dynamic.newInstance(js.Dynamic.global.YT.Player)(playerElementId, options))
+      val api = dom.window.asInstanceOf[js.Dynamic].YT
+      yt = Some(js.Dynamic.newInstance(api.Player)(playerElementId, options))
 
   private def onState(state: Int): Unit = state match
     case 0 => playing.set(false); step(1) // ended
@@ -171,15 +172,18 @@ object Player:
 
   // YouTube's script calls a global function when it's ready, and it's only ever loaded once.
   private def whenApiReady(run: () => Unit): Unit =
-    if js.typeOf(js.Dynamic.global.YT) != "undefined" && js.typeOf(js.Dynamic.global.YT.Player) != "undefined" then run()
+    // Through window: assigning to a global name that doesn't exist yet throws in strict mode.
+    val window = dom.window.asInstanceOf[js.Dynamic]
+    if js.typeOf(window.YT) != "undefined" && js.typeOf(window.YT.Player) != "undefined" then run()
     else
       waiting = waiting :+ run
       if dom.document.getElementById("youtube-iframe-api") == null then
-        js.Dynamic.global.onYouTubeIframeAPIReady = (() => {
+        val onReady: js.Function0[Unit] = () => {
           val ready = waiting
           waiting = Vector.empty
           ready.foreach(_())
-        }): js.Function0[Unit]
+        }
+        window.updateDynamic("onYouTubeIframeAPIReady")(onReady)
         val tag = dom.document.createElement("script").asInstanceOf[dom.html.Script]
         tag.id = "youtube-iframe-api"
         tag.src = "https://www.youtube.com/iframe_api"
