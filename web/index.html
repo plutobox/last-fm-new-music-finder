@@ -169,6 +169,7 @@
   <body>
     <div id="app"></div>
     <!-- relative path so it works under /last-fm-new-music-finder/<branch>/ -->
-    <script src="./main.js"></script>
+    <!-- CI replaces BUILD_ID, so a browser can't pair a new page with a cached older script -->
+    <script src="./main.js?v=BUILD_ID"></script>
   </body>
 </html>

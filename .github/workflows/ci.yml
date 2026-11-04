@@ -62,6 +62,7 @@ jobs:
           rm -rf "$dest"
           mkdir -p "$dest"
           cp feature/web/index.html "$dest/"
+          sed -i "s/BUILD_ID/$GITHUB_SHA/" "$dest/index.html"
           cp feature/target/scala-*/*-opt/main.js "$dest/"
           # The site's root has no app of its own, so send visitors to the main branch's build.
           cp feature/web/root-index.html pages/index.html
