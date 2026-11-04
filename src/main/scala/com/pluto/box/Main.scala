@@ -107,6 +107,7 @@ private def finder(library: Library) =
     fieldSet(
       cls := "genre-set",
       legend("Genres"),
+      p(cls := "hint", "Click once to include a genre, twice to leave it out, and again to clear it."),
       div(
         cls := "genre-match",
         role := "group",
@@ -129,12 +130,20 @@ private def finder(library: Library) =
             typ := "button",
             cls := "genre",
             cls("is-on") <-- query.signal.map(_.genres.contains(genre)),
-            aria.pressed <-- query.signal.map(_.genres.contains(genre).toString),
+            cls("is-out") <-- query.signal.map(_.excludedGenres.contains(genre)),
+            aria.label <-- query.signal.map: q =>
+              if q.genres.contains(genre) then s"$genre, included"
+              else if q.excludedGenres.contains(genre) then s"$genre, left out"
+              else genre,
             genre,
             span(cls := "genre-count", formatCount(count)),
+            // Each click moves on: not chosen, then included, then left out, then not chosen again.
             onClick --> (_ =>
               update(q =>
-                q.copy(genres = if q.genres.contains(genre) then q.genres - genre else q.genres + genre)
+                if q.genres.contains(genre) then
+                  q.copy(genres = q.genres - genre, excludedGenres = q.excludedGenres + genre)
+                else if q.excludedGenres.contains(genre) then q.copy(excludedGenres = q.excludedGenres - genre)
+                else q.copy(genres = q.genres + genre)
               ))
           )
       )

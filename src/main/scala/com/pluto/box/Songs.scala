@@ -37,6 +37,7 @@ object SortBy:
 final case class Query(
   genres: Set[String] = Set.empty,
   matchAllGenres: Boolean = false,
+  excludedGenres: Set[String] = Set.empty,
   artist: String = "",
   title: String = "",
   sort: SortBy = SortBy.MostListeners,
@@ -93,6 +94,7 @@ object Songs:
     val matched = library.songs.filter: s =>
       (q.genres.isEmpty ||
         (if q.matchAllGenres then q.genres.forall(s.genres.contains) else s.genres.exists(q.genres))) &&
+      !s.genres.exists(q.excludedGenres) &&
       (artist.isEmpty || s.artistLower.contains(artist)) &&
       (title.isEmpty || s.titleLower.contains(title)) &&
       inRange(s.listeners, loL, hiL) && inRange(s.plays, loP, hiP) && inRange(s.lovedBy, loH, hiH)
