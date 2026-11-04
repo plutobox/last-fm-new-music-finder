@@ -2,7 +2,8 @@ name: Fetch top songs
 
 on:
   schedule:
-    - cron: "47 * * * *" # every hour (off the top of the hour, which GitHub delays most)
+    # Every 2 hours, on odd hours. A run takes up to about 80 minutes, which leaves a gap for the crawl and import.
+    - cron: "47 1-23/2 * * *"
   workflow_dispatch:
     inputs:
       max_users:

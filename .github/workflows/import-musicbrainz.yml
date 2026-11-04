@@ -4,7 +4,7 @@ name: Import MusicBrainz data
 # Fetch top songs run publishes them to songs.json.
 on:
   schedule:
-    - cron: "23 6 3 * *" # monthly, off the top of the hour
+    - cron: "12 15 3 * *" # monthly, in the gap after the 13:47 fetch
   workflow_dispatch:
     inputs:
       check_only:

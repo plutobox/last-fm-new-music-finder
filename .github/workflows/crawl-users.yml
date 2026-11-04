@@ -2,7 +2,7 @@ name: Crawl Last.fm users
 
 on:
   schedule:
-    - cron: "17 */2 * * *" # every 2 hours (off the top of the hour, which GitHub delays most)
+    - cron: "12 3 * * *" # daily, in the gap after the 01:47 fetch
   workflow_dispatch:
     inputs:
       seeds:
