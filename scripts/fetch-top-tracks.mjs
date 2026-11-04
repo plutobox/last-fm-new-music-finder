@@ -1,10 +1,14 @@
 // Fetches each crawled user's top songs via user.getTopTracks and stores them, normalized, in the users database.
-// Two requests per user: period=overall and period=12month, first 50 songs each, no pagination.
+// Top songs: two requests per user, period=overall and period=12month, first 50 songs each, no pagination.
+// Loved songs: user.getLovedTracks per user, every page.
+// Both share the songs and artists tables, so a song on several lists is stored once, and the
+// user_merged_songs view merges them per user.
 // Usage: node scripts/fetch-top-tracks.mjs --db data/users.db.age [--max-users 5000] [--minutes 40]
 //                                          [--part-mb 90]
 //
 // Order: LAST_FM_USERNAME first (similarity is measured against that user), then fewest friend-hops first.
-// Each user is pulled once, ever: anyone with songs_fetched_at set is never requested again.
+// Each user is pulled once, ever: songs_fetched_at and loved_fetched_at are tracked separately, and whichever
+// is already set is never requested again.
 //
 // Stops early, keeping its progress, on: --minutes or a run of API failures.
 // A ".age" --db is split into files of at most --part-mb (see db-store.mjs).
@@ -29,6 +33,7 @@ if (!apiKey) throw new Error("LAST_FM_API_KEY is not set");
 
 const PERIODS = [{ id: 1, name: "overall" }, { id: 2, name: "12month" }];
 const LIMIT = 50;
+const LOVED_PAGE_SIZE = Number(args["loved-page-size"] ?? 1000);
 const DELAY_MS = 250; // at most ~4 req/s, under Last.fm's ~5/s limit
 const MAX_CONSECUTIVE_FAILURES = 20;
 const PERMANENT_ERRORS = new Set([6, 17]); // user not found / private: specific to this user, don't retry
@@ -52,13 +57,10 @@ const now = () => new Date().toISOString();
 
 let requests = 0;
 
-// Returns { songs, total } or { error, kind: "permanent" | "fatal" | "transient" }.
-async function getTopSongs(user, period) {
+// Returns data[key], or { error, kind: "permanent" | "fatal" | "transient" }.
+async function apiGet(params, key) {
   const url = new URL("https://ws.audioscrobbler.com/2.0/");
-  url.search = new URLSearchParams({
-    method: "user.getTopTracks", user, period, limit: String(LIMIT), page: "1",
-    api_key: apiKey, format: "json",
-  });
+  url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
   let last = "retries-exhausted";
   for (let attempt = 0; attempt < 4; attempt++) {
     await sleep(DELAY_MS);
@@ -77,19 +79,8 @@ async function getTopSongs(user, period) {
       if (PERMANENT_ERRORS.has(data.error)) return { error: message, kind: "permanent" };
       if (FATAL_ERRORS.has(data.error)) return { error: message, kind: "fatal" };
       last = `api error ${data.error}`;
-    } else if (res.ok && data.toptracks) {
-      const t = data.toptracks.track ?? [];
-      return {
-        songs: (Array.isArray(t) ? t : [t]).filter((x) => x.name && x.artist?.name).map((x) => ({
-          name: x.name,
-          artist: x.artist.name,
-          mbid: x.mbid || null,
-          duration: Number(x.duration) || null,
-          plays: Number(x.playcount) || 0,
-          rank: Number(x["@attr"]?.rank) || 0,
-        })),
-        total: Number(data.toptracks["@attr"]?.total) || 0,
-      };
+    } else if (res.ok && data[key]) {
+      return data[key];
     } else {
       last = `http ${res.status}`;
     }
@@ -97,6 +88,43 @@ async function getTopSongs(user, period) {
   }
   return { error: last, kind: "transient" };
 }
+
+const asArray = (x) => (Array.isArray(x) ? x : x ? [x] : []);
+
+async function getTopSongs(user, period) {
+  const r = await apiGet({ method: "user.getTopTracks", user, period, limit: String(LIMIT), page: "1" }, "toptracks");
+  if (r.error) return r;
+  return {
+    songs: asArray(r.track).filter((x) => x.name && x.artist?.name).map((x) => ({
+      name: x.name,
+      artist: x.artist.name,
+      mbid: x.mbid || null,
+      duration: Number(x.duration) || null,
+      plays: Number(x.playcount) || 0,
+      rank: Number(x["@attr"]?.rank) || 0,
+    })),
+    total: Number(r["@attr"]?.total) || 0,
+  };
+}
+
+// Reads every page. Nothing is returned unless all pages succeed, so a user is never saved half-read.
+async function getLovedSongs(user) {
+  const songs = [];
+  let total = 0, totalPages = 1;
+  for (let page = 1; page <= totalPages; page++) {
+    const r = await apiGet({ method: "user.getLovedTracks", user, limit: String(LOVED_PAGE_SIZE), page: String(page) }, "lovedtracks");
+    if (r.error) return r;
+    totalPages = Number(r["@attr"]?.totalPages) || 1;
+    total = Number(r["@attr"]?.total) || 0;
+    for (const x of asArray(r.track)) {
+      if (x.name && x.artist?.name) {
+        songs.push({ name: x.name, artist: x.artist.name, mbid: x.mbid || null, lovedAt: Number(x.date?.uts) || null });
+      }
+    }
+  }
+  return { songs, total };
+}
+
 
 // ---- Per-user statistics ---------------------------------------------------------------------
 
@@ -246,7 +274,36 @@ db.exec(`
     stop_reason   TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS user_loved_songs (
+    user_id  INTEGER NOT NULL REFERENCES users (id),
+    song_id  INTEGER NOT NULL REFERENCES songs (id),
+    loved_at INTEGER,  -- unix seconds
+    PRIMARY KEY (user_id, song_id)
+  ) WITHOUT ROWID;
+
   -- Readable versions, computed on demand so they cost no storage.
+  CREATE VIEW IF NOT EXISTS user_loved_songs_named AS
+    SELECT u.name AS user, a.name AS artist, s.name AS song, l.loved_at
+    FROM user_loved_songs l
+    JOIN users u ON u.id = l.user_id
+    JOIN songs s ON s.id = l.song_id
+    JOIN artists a ON a.id = s.artist_id;
+
+  -- Each user's top songs and loved songs merged, one row per user and song.
+  CREATE VIEW IF NOT EXISTS user_merged_songs AS
+    SELECT u.name AS user, a.name AS artist, s.name AS song,
+           (SELECT min(t.rank) FROM user_songs t WHERE t.user_id = m.user_id AND t.period_id = 1 AND t.song_id = m.song_id) AS overall_rank,
+           (SELECT max(t.playcount) FROM user_songs t WHERE t.user_id = m.user_id AND t.period_id = 1 AND t.song_id = m.song_id) AS overall_plays,
+           (SELECT min(t.rank) FROM user_songs t WHERE t.user_id = m.user_id AND t.period_id = 2 AND t.song_id = m.song_id) AS last_12_months_rank,
+           (SELECT max(t.playcount) FROM user_songs t WHERE t.user_id = m.user_id AND t.period_id = 2 AND t.song_id = m.song_id) AS last_12_months_plays,
+           l.song_id IS NOT NULL AS loved,
+           l.loved_at
+    FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs) m
+    JOIN users u ON u.id = m.user_id
+    JOIN songs s ON s.id = m.song_id
+    JOIN artists a ON a.id = s.artist_id
+    LEFT JOIN user_loved_songs l ON l.user_id = m.user_id AND l.song_id = m.song_id;
+
   CREATE VIEW IF NOT EXISTS user_songs_named AS
     SELECT u.name AS user, p.name AS period, us.rank, a.name AS artist, s.name AS song, us.playcount
     FROM user_songs us
@@ -266,6 +323,13 @@ db.exec(`
 `);
 
 {
+  const columns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
+  for (const [name, type] of [["loved_fetched_at", "TEXT"], ["loved_error", "TEXT"], ["loved_total", "INTEGER"]]) {
+    if (!columns.includes(name)) db.exec(`ALTER TABLE users ADD COLUMN ${name} ${type}`);
+  }
+  if (!db.prepare("PRAGMA table_info(song_runs)").all().some((c) => c.name === "users_loved")) {
+    db.exec("ALTER TABLE song_runs ADD COLUMN users_loved INTEGER");
+  }
   const insertPeriod = db.prepare("INSERT INTO periods (id, name) VALUES (?, ?) ON CONFLICT DO NOTHING");
   for (const p of PERIODS) insertPeriod.run(p.id, p.name);
 }
@@ -292,6 +356,8 @@ const q = {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `),
   markFetched: db.prepare("UPDATE users SET songs_fetched_at = ?, songs_error = ? WHERE id = ?"),
+  markLoved: db.prepare("UPDATE users SET loved_fetched_at = ?, loved_error = ?, loved_total = ? WHERE id = ?"),
+  insertLoved: db.prepare("INSERT INTO user_loved_songs (user_id, song_id, loved_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING"),
   pageCount: db.prepare("PRAGMA page_count"),
   pageSize: db.prepare("PRAGMA page_size"),
 };
@@ -320,6 +386,17 @@ function saveUser(userId, results) {
       );
     }
     q.markFetched.run(now(), null, userId);
+  });
+}
+
+function saveLoved(userId, { songs, total }) {
+  tx(() => {
+    for (const s of songs) {
+      const artistId = q.upsertArtist.get(s.artist).id;
+      const songId = q.upsertSong.get(artistId, s.name, s.mbid, null).id;
+      q.insertLoved.run(userId, songId, s.lovedAt);
+    }
+    q.markLoved.run(now(), null, total, userId);
   });
 }
 
@@ -366,50 +443,79 @@ if (me) {
 }
 
 const queue = db.prepare(`
-  SELECT id, name FROM users
-  WHERE songs_fetched_at IS NULL
+  SELECT id, name, songs_fetched_at, loved_fetched_at FROM users
+  WHERE songs_fetched_at IS NULL OR loved_fetched_at IS NULL
   ORDER BY name = ? COLLATE NOCASE DESC, depth, random()
   LIMIT ?
 `).all(me ?? "", maxUsers);
 console.log(`Queued ${queue.length} users`);
 
-let fetched = 0, errored = 0, consecutiveFailures = 0, stopReason = "queue finished";
+let fetched = 0, lovedFetched = 0, errored = 0, consecutiveFailures = 0, stopReason = "queue finished";
+
+// True when the whole run should stop.
+function shouldStop(r) {
+  if (r.kind === "fatal") { stopReason = `api key problem (${r.error})`; return true; }
+  if (r.kind === "transient" && ++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    stopReason = `repeated failures (${r.error})`;
+    return true;
+  }
+  return false;
+}
 
 outer: for (const user of queue) {
   if (Date.now() >= deadline) { stopReason = "time limit"; break; }
 
-  const results = {};
-  for (const period of PERIODS) {
-    const r = await getTopSongs(user.name, period.name);
-    if (r.kind === "fatal") { stopReason = `api key problem (${r.error})`; break outer; }
-    if (r.kind === "permanent") {
-      q.markFetched.run(now(), r.error, user.id);
+  if (!user.songs_fetched_at) {
+    const results = {};
+    let failure = null;
+    for (const period of PERIODS) {
+      const r = await getTopSongs(user.name, period.name);
+      if (r.error) { failure = r; break; }
+      results[period.id] = r;
+    }
+    if (failure) {
+      if (shouldStop(failure)) break outer;
+      if (failure.kind === "transient") continue outer; // left unfetched, so a later run retries this user
+      q.markFetched.run(now(), failure.error, user.id);
       errored++;
       consecutiveFailures = 0;
-      continue outer;
+    } else {
+      saveUser(user.id, results);
+      fetched++;
+      consecutiveFailures = 0;
     }
-    if (r.kind === "transient") {
-      if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) { stopReason = `repeated failures (${r.error})`; break outer; }
-      continue outer; // left unfetched, so a later run retries this user
-    }
-    results[period.id] = r;
   }
-  saveUser(user.id, results);
-  fetched++;
-  consecutiveFailures = 0;
-  if (fetched % 250 === 0) {
-    console.log(`fetched ${fetched}, errors ${errored}, requests ${requests}, db ${(dbBytes() / 1048576).toFixed(1)} MB`);
+
+  if (!user.loved_fetched_at) {
+    const r = await getLovedSongs(user.name);
+    if (r.error) {
+      if (shouldStop(r)) break outer;
+      if (r.kind === "transient") continue outer;
+      q.markLoved.run(now(), r.error, null, user.id);
+      errored++;
+      consecutiveFailures = 0;
+    } else {
+      saveLoved(user.id, r);
+      lovedFetched++;
+      consecutiveFailures = 0;
+    }
+  }
+
+  if ((fetched + lovedFetched) % 250 === 0 && fetched + lovedFetched > 0) {
+    console.log(`top songs ${fetched}, loved ${lovedFetched}, errors ${errored}, requests ${requests}, db ${(dbBytes() / 1048576).toFixed(1)} MB`);
   }
 }
 
 if (fetched > 0) updateSimilarity();
 
 db.prepare(
-  "UPDATE song_runs SET finished_at = ?, users_fetched = ?, users_errored = ?, requests = ?, stop_reason = ? WHERE id = ?"
-).run(now(), fetched, errored, requests, stopReason, runId);
+  "UPDATE song_runs SET finished_at = ?, users_fetched = ?, users_loved = ?, users_errored = ?, requests = ?, stop_reason = ? WHERE id = ?"
+).run(now(), fetched, lovedFetched, errored, requests, stopReason, runId);
 
 const count = (sql) => db.prepare(sql).get().n;
 const remaining = count("SELECT count(*) AS n FROM users WHERE songs_fetched_at IS NULL");
+const remainingLoved = count("SELECT count(*) AS n FROM users WHERE loved_fetched_at IS NULL");
+const totalLoved = count("SELECT count(*) AS n FROM user_loved_songs");
 const totalSongs = count("SELECT count(*) AS n FROM songs");
 const totalArtists = count("SELECT count(*) AS n FROM artists");
 const totalRows = count("SELECT count(*) AS n FROM user_songs");
@@ -421,8 +527,9 @@ const files = encrypted ? await writeEncryptedDb(dbPath, ageIdentity, fs.readFil
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
-  `Fetched ${fetched} users (${errored} errored, ${remaining} not fetched yet) with ${requests} requests. ` +
-  `Database: ${totalSongs} songs, ${totalArtists} artists, ${totalRows} user-song rows, ` +
+  `Top songs: ${fetched} users (${remaining} left). Loved songs: ${lovedFetched} users (${remainingLoved} left). ` +
+  `${errored} errored, ${requests} requests. Database: ${totalSongs} songs, ${totalArtists} artists, ` +
+  `${totalRows} top-song rows, ${totalLoved} loved rows, ` +
   `${(finalBytes / 1048576).toFixed(1)} MB in ${files} file(s). Stopped: ${stopReason}`
 );
 if (!/queue finished|time limit/.test(stopReason)) console.log(`::warning::Stopped early: ${stopReason}`);

@@ -44,6 +44,7 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 - Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
 - See "Querying the data" below for how to read it.
 - `.github/workflows/fetch-top-tracks.yml` runs hourly (and on demand). It runs `scripts/fetch-top-tracks.mjs`, which makes two `user.getTopTracks` requests per user (`period=overall` and `period=12month`, `limit=50`, no pagination), starting with `LAST_FM_USERNAME` and then the fewest friend-hops. **It's a one-time pull: never refresh a user's data.** Anyone with `users.songs_fetched_at` set is never requested again.
+- The same workflow calls `user.getLovedTracks` for each user (every page, also a one-time pull, tracked by `users.loved_fetched_at`). Loved and top songs share the `songs` and `artists` tables. Table: `user_loved_songs`. Views: `user_loved_songs_named`, `user_merged_songs` (each user's top and loved songs merged, one row per user and song).
 - Song data is normalized. Tables: `artists`, `songs` (each song stored once), `periods`, `user_songs` (user → song, by ID, with rank and plays), `user_song_stats` (per user and period: play totals, top song and artist, artist concentration, overlap between the two periods, `similarity_to_me`), `song_runs`. Views with readable names: `user_songs_named`, `song_stats`.
 - The repo is public, so Actions logs are too: the scripts log counts only, never usernames.
 
