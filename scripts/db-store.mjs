@@ -1,12 +1,12 @@
 // Reads and writes the encrypted database: gzip, then age-encrypt, then split into numbered files.
-// For --db data/users.db.age the files are data/users.db.age.000, .001, ... so no file passes GitHub's
-// 100 MB limit. Join them in order and you have one age file. A single unsplit file is still readable.
+// For --db data/users.db.age the files are data/users.db.age.000, .001, ... so no file passes the 2 GB limit
+// on GitHub Release files. Join them in order and you have one age file. A single unsplit file is still readable.
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { Encrypter, Decrypter, identityToRecipient } from "age-encryption";
 
-export const DEFAULT_PART_MB = 90;
+export const DEFAULT_PART_MB = 1900;
 
 function partFiles(dbPath) {
   const dir = path.dirname(dbPath);

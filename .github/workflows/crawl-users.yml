@@ -22,12 +22,14 @@ permissions:
   contents: write
 
 concurrency:
-  group: gh-pages-write
+  group: database-write
   cancel-in-progress: false
 
 jobs:
   crawl:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,22 +39,14 @@ jobs:
         with:
           node-version: 24 # built-in node:sqlite
 
-      - name: Checkout gh-pages branch (create if missing)
-        shell: bash
-        run: |
-          if git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" gh-pages >/dev/null 2>&1; then
-            git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
-          else
-            git init pages
-            git -C pages checkout --orphan gh-pages
-            git -C pages remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
-          fi
-
       - name: Install script dependencies
         working-directory: feature/scripts
         run: npm ci
 
-      - name: Crawl friends (decrypts, updates, re-encrypts data/users.db.age)
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
+      - name: Crawl friends (decrypts, updates, re-encrypts)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
@@ -68,15 +62,7 @@ jobs:
             --random-seeds "$RANDOM_SEEDS" \
             --depth "$DEPTH" \
             --max-users "$MAX_USERS" \
-            --db pages/data/users.db.age \
-            --import-json pages/data/users.json.age
-          # The old JSON list has been migrated into the database.
-          rm -f pages/data/users.json.age
+            --db db/users.db.age
 
-      - name: Commit users.db.age to gh-pages
-        uses: EndBug/add-and-commit@v9
-        with:
-          cwd: pages
-          add: "data"
-          message: "Update encrypted crawled users database"
-          push: origin gh-pages --set-upstream
+      - name: Upload the database to the release
+        run: node feature/scripts/release-store.mjs upload db

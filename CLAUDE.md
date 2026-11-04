@@ -40,25 +40,23 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 ## Crawled users database
 
 - `.github/workflows/crawl-users.yml` runs every 2 hours and on demand. To pause it, use `gh workflow disable crawl-users.yml`. It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
-- The database is published gzipped, age-encrypted and split into files of at most 90 MB at `gh-pages:data/users.db.age.000`, `.001`, and so on (`scripts/db-store.mjs`), so no file passes GitHub's 100 MB limit. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
+- The database lives in the `database` GitHub Release, gzipped and age-encrypted (`scripts/db-store.mjs`), and is split only past 1.9 GB, under the 2 GB limit on Release files. Each workflow downloads it, updates it and uploads a new version (`scripts/release-store.mjs`). The newest version and one backup are kept, and a failed upload can't replace good data. It's not on `gh-pages`, so it adds nothing to Git history. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
 - Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
 - See "Querying the data" below for how to read it.
 - `.github/workflows/fetch-top-tracks.yml` runs hourly (and on demand). It runs `scripts/fetch-top-tracks.mjs`, which makes two `user.getTopTracks` requests per user (`period=overall` and `period=12month`, `limit=50`, no pagination), starting with `LAST_FM_USERNAME` and then the fewest friend-hops. **It's a one-time pull: never refresh a user's data.** Anyone with `users.songs_fetched_at` set is never requested again.
 - The same workflow calls `user.getLovedTracks` for each user (every page, also a one-time pull, tracked by `users.loved_fetched_at`). Loved and top songs share the `songs` and `artists` tables. Table: `user_loved_songs`. Views: `user_loved_songs_named`, `user_merged_songs` (each user's top and loved songs merged, one row per user and song).
+- Requests run in parallel inside one run (3 users at a time, sharing a limit of 4 per second that slows down if Last.fm reports rate limiting). Don't run these workflows in parallel with each other: each one rewrites the whole database, so they share a `concurrency` group.
 - Song data is normalized. Tables: `artists`, `songs` (each song stored once), `periods`, `user_songs` (user → song, by ID, with rank and plays), `user_song_stats` (per user and period: play totals, top song and artist, artist concentration, overlap between the two periods, `similarity_to_me`), `song_runs`. Views with readable names: `user_songs_named`, `song_stats`.
 - The repo is public, so Actions logs are too: the scripts log counts only, never usernames.
 
 ## Querying the data
 
-The data isn't in the working tree on `main`, and a local copy goes stale after every workflow run. To answer any question about it, always pull the latest `gh-pages` first, then query a decrypted copy:
+The data isn't in the working tree, and a local copy goes stale after every workflow run. To answer any question about it, always download the latest copy from the `database` release first, then query a decrypted copy:
 
-1. **Run this in the Bash tool, not PowerShell.** PowerShell's `>` corrupts binary files. It fetches the database (a single `users.db.age` or split `users.db.age.000`, `.001`, and so on) and decrypts it into a temp folder outside the repo:
+1. **Download and decrypt it** into a temp folder outside the repo. In the Bash tool:
    ```bash
-   TMP="<scratchpad or temp folder>"; mkdir -p "$TMP/enc"
-   git fetch origin gh-pages --quiet
-   for f in $(git ls-tree -r --name-only origin/gh-pages | grep '^data/users.db.age'); do
-     git show "origin/gh-pages:$f" > "$TMP/enc/$(basename "$f")"
-   done
+   TMP="<scratchpad or temp folder>"
+   node scripts/release-store.mjs download "$TMP/enc"
    export LAST_FM_AGE_IDENTITY="$(grep '^AGE-SECRET-KEY-' "$HOME/.last-fm-new-music-finder.age.key")"
    node --no-warnings scripts/decrypt.mjs "$TMP/enc/users.db.age" "$TMP/users.db"
    ```

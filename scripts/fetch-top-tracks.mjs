@@ -4,7 +4,9 @@
 // Both share the songs and artists tables, so a song on several lists is stored once, and the
 // user_merged_songs view merges them per user.
 // Usage: node scripts/fetch-top-tracks.mjs --db data/users.db.age [--max-users 5000] [--minutes 40]
-//                                          [--part-mb 90]
+//                                          [--part-mb 1900] [--concurrency 3] [--max-per-second 4]
+//
+// Requests run in parallel, sharing one speed limit that slows down if Last.fm reports rate limiting.
 //
 // Order: LAST_FM_USERNAME first (similarity is measured against that user), then fewest friend-hops first.
 // Each user is pulled once, ever: songs_fetched_at and loved_fetched_at are tracked separately, and whichever
@@ -34,7 +36,9 @@ if (!apiKey) throw new Error("LAST_FM_API_KEY is not set");
 const PERIODS = [{ id: 1, name: "overall" }, { id: 2, name: "12month" }];
 const LIMIT = 50;
 const LOVED_PAGE_SIZE = Number(args["loved-page-size"] ?? 1000);
-const DELAY_MS = 250; // at most ~4 req/s, under Last.fm's ~5/s limit
+const CONCURRENCY = Number(args.concurrency ?? 3);
+const MIN_INTERVAL_MS = 1000 / Number(args["max-per-second"] ?? 4);
+const MAX_INTERVAL_MS = 5000;
 const MAX_CONSECUTIVE_FAILURES = 20;
 const PERMANENT_ERRORS = new Set([6, 17]); // user not found / private: specific to this user, don't retry
 const FATAL_ERRORS = new Set([10, 26]); // bad or suspended API key: nothing else will work either
@@ -55,7 +59,24 @@ const now = () => new Date().toISOString();
 
 // ---- Last.fm ---------------------------------------------------------------------------------
 
-let requests = 0;
+let requests = 0, rateLimited = 0;
+
+// One speed limit shared by every parallel request: each takes the next time slot.
+let intervalMs = MIN_INTERVAL_MS, nextSlot = 0;
+async function waitForSlot() {
+  const t = Date.now();
+  const at = Math.max(t, nextSlot);
+  nextSlot = at + intervalMs;
+  if (at > t) await sleep(at - t);
+}
+function slowDown() {
+  rateLimited++;
+  intervalMs = Math.min(intervalMs * 2, MAX_INTERVAL_MS);
+  nextSlot = Math.max(nextSlot, Date.now() + MAX_INTERVAL_MS); // everyone pauses, not just this request
+}
+function recover() {
+  intervalMs = Math.max(MIN_INTERVAL_MS, intervalMs * 0.99);
+}
 
 // Returns data[key], or { error, kind: "permanent" | "fatal" | "transient" }.
 async function apiGet(params, key) {
@@ -63,7 +84,7 @@ async function apiGet(params, key) {
   url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
   let last = "retries-exhausted";
   for (let attempt = 0; attempt < 4; attempt++) {
-    await sleep(DELAY_MS);
+    await waitForSlot();
     requests++;
     let res, data;
     try {
@@ -74,12 +95,14 @@ async function apiGet(params, key) {
       await sleep(2000 * (attempt + 1));
       continue;
     }
+    if (data.error === 29 || res.status === 429) slowDown();
     if (data.error) {
       const message = `${data.error}: ${data.message ?? ""}`.trim();
       if (PERMANENT_ERRORS.has(data.error)) return { error: message, kind: "permanent" };
       if (FATAL_ERRORS.has(data.error)) return { error: message, kind: "fatal" };
       last = `api error ${data.error}`;
     } else if (res.ok && data[key]) {
+      recover();
       return data[key];
     } else {
       last = `http ${res.status}`;
@@ -452,45 +475,43 @@ console.log(`Queued ${queue.length} users`);
 
 let fetched = 0, lovedFetched = 0, errored = 0, consecutiveFailures = 0, stopReason = "queue finished";
 
-// True when the whole run should stop.
-function shouldStop(r) {
-  if (r.kind === "fatal") { stopReason = `api key problem (${r.error})`; return true; }
-  if (r.kind === "transient" && ++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    stopReason = `repeated failures (${r.error})`;
-    return true;
-  }
-  return false;
+let stopped = false;
+function stop(reason) {
+  if (!stopped) stopReason = reason;
+  stopped = true;
 }
 
-outer: for (const user of queue) {
-  if (Date.now() >= deadline) { stopReason = "time limit"; break; }
+// Stops the whole run on an API key problem or a run of failures.
+function noteFailure(r) {
+  if (r.kind === "fatal") stop(`api key problem (${r.error})`);
+  else if (r.kind === "transient" && ++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    stop(`repeated failures (${r.error})`);
+  }
+}
 
+async function processUser(user) {
   if (!user.songs_fetched_at) {
-    const results = {};
-    let failure = null;
-    for (const period of PERIODS) {
-      const r = await getTopSongs(user.name, period.name);
-      if (r.error) { failure = r; break; }
-      results[period.id] = r;
-    }
+    const [overall, recent] = await Promise.all(PERIODS.map((p) => getTopSongs(user.name, p.name)));
+    const failure = overall.error ? overall : recent.error ? recent : null;
     if (failure) {
-      if (shouldStop(failure)) break outer;
-      if (failure.kind === "transient") continue outer; // left unfetched, so a later run retries this user
+      noteFailure(failure);
+      if (failure.kind !== "permanent") return; // left unfetched, so a later run retries this user
       q.markFetched.run(now(), failure.error, user.id);
       errored++;
       consecutiveFailures = 0;
     } else {
-      saveUser(user.id, results);
+      saveUser(user.id, { [PERIODS[0].id]: overall, [PERIODS[1].id]: recent });
       fetched++;
       consecutiveFailures = 0;
     }
   }
 
+  if (stopped) return;
   if (!user.loved_fetched_at) {
     const r = await getLovedSongs(user.name);
     if (r.error) {
-      if (shouldStop(r)) break outer;
-      if (r.kind === "transient") continue outer;
+      noteFailure(r);
+      if (r.kind !== "permanent") return;
       q.markLoved.run(now(), r.error, null, user.id);
       errored++;
       consecutiveFailures = 0;
@@ -501,10 +522,22 @@ outer: for (const user of queue) {
     }
   }
 
-  if ((fetched + lovedFetched) % 250 === 0 && fetched + lovedFetched > 0) {
-    console.log(`top songs ${fetched}, loved ${lovedFetched}, errors ${errored}, requests ${requests}, db ${(dbBytes() / 1048576).toFixed(1)} MB`);
+  processed++;
+  if (processed % 250 === 0) {
+    console.log(`users ${processed}, top songs ${fetched}, loved ${lovedFetched}, errors ${errored}, requests ${requests}, db ${(dbBytes() / 1048576).toFixed(1)} MB`);
   }
 }
+
+// Saves are synchronous, so parallel workers can't interleave a database transaction.
+let processed = 0, nextUser = 0;
+const fetchStart = Date.now();
+await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+  while (!stopped && nextUser < queue.length) {
+    if (Date.now() >= deadline) { stop("time limit"); break; }
+    await processUser(queue[nextUser++]);
+  }
+}));
+const perSecond = requests / Math.max(1, (Date.now() - fetchStart) / 1000);
 
 if (fetched > 0) updateSimilarity();
 
@@ -528,7 +561,7 @@ fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
   `Top songs: ${fetched} users (${remaining} left). Loved songs: ${lovedFetched} users (${remainingLoved} left). ` +
-  `${errored} errored, ${requests} requests. Database: ${totalSongs} songs, ${totalArtists} artists, ` +
+  `${errored} errored, ${requests} requests (${perSecond.toFixed(1)}/s, ${rateLimited} rate limited). Database: ${totalSongs} songs, ${totalArtists} artists, ` +
   `${totalRows} top-song rows, ${totalLoved} loved rows, ` +
   `${(finalBytes / 1048576).toFixed(1)} MB in ${files} file(s). Stopped: ${stopReason}`
 );
