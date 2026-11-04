@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: ["**"] # not tags: the database release has a tag, and deploying it would publish junk
 
 permissions:
   contents: write
