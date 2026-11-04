@@ -9,7 +9,7 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 - Source: `src/main/scala/com/pluto/box/Main.scala`; static page: `web/index.html` (uses relative `./main.js`).
 - Build: `sbt fullLinkJS` → `target/scala-*/*-opt/main.js`. Dev: `sbt fastLinkJS`.
 - `.github/workflows/ci.yml` runs on every push, builds, and commits `index.html` + `main.js` to the `gh-pages` branch under a folder named after the pushed branch (branch is created if missing).
-- Live at `https://plutobox.github.io/last-fm-new-music-finder/<branch>/` (e.g. `/main/`). GitHub Pages must be set to serve from the `gh-pages` branch.
+- Live at `https://plutobox.github.io/last-fm-new-music-finder/<branch>/` (e.g. `/main/`). The site root redirects to `/main/` (`web/root-index.html`, published by CI). GitHub Pages must be set to serve from the `gh-pages` branch.
 - The frontend is public static JS: never bake `LAST_FM_SHARED_SECRET` into it. Signed calls need a backend or CI step.
 
 ## Configuration & Secrets
