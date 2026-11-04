@@ -64,7 +64,7 @@ jobs:
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
         run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 5
 
-      - name: Fetch song details (album, tags, wiki, global counts)
+      - name: Fetch song details (album, tags, global counts)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}

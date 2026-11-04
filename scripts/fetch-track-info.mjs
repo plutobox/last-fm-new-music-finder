@@ -1,4 +1,5 @@
-// Fetches each song's details via track.getInfo: url, global listeners and plays, album, tags and wiki text.
+// Fetches each song's details via track.getInfo: url, global listeners and plays, album, tags and wiki date.
+// The wiki text is deliberately not stored: it's most of the response's size and nothing here uses it.
 // One request per song, once ever, most-listened songs first.
 // Usage: node scripts/fetch-track-info.mjs --db db/users.db.age [--max-songs 20000] [--minutes 15]
 //                                          [--concurrency 3] [--max-per-second 4]
@@ -33,8 +34,6 @@ const SONG_COLUMNS = [
   ["album_id", "INTEGER"],
   ["album_position", "INTEGER"],
   ["wiki_published", "TEXT"], // as Last.fm writes it, like "11 Sep 2008, 13:03"
-  ["wiki_summary", "TEXT"], // contains HTML links
-  ["wiki_content", "TEXT"], // contains HTML links
   ["info_fetched_at", "TEXT"], // set once requested, and the song is never requested again
   ["info_error", "TEXT"],
 ];
@@ -95,6 +94,9 @@ for (const name of ["mbid", "url"]) {
   if (!columnsOf("artists").includes(name)) db.exec(`ALTER TABLE artists ADD COLUMN ${name} TEXT`);
 }
 if (!columnsOf("tags").includes("url")) db.exec("ALTER TABLE tags ADD COLUMN url TEXT");
+for (const name of ["wiki_summary", "wiki_content"]) {
+  if (columnsOf("songs").includes(name)) db.exec(`ALTER TABLE songs DROP COLUMN ${name}`); // an earlier version stored these
+}
 
 const q = {
   upsertTag: db.prepare(`
@@ -118,7 +120,7 @@ const q = {
   updateSong: db.prepare(`
     UPDATE songs SET mbid = COALESCE(?, mbid), duration = COALESCE(?, duration), url = ?, listeners = ?, plays = ?,
       streamable = ?, full_track = ?, album_id = ?, album_position = ?,
-      wiki_published = ?, wiki_summary = ?, wiki_content = ?, info_fetched_at = ?, info_error = NULL
+      wiki_published = ?, info_fetched_at = ?, info_error = NULL
     WHERE id = ?
   `),
   markError: db.prepare("UPDATE songs SET info_fetched_at = ?, info_error = ? WHERE id = ?"),
@@ -147,8 +149,7 @@ function saveSong(songId, t) {
       t.mbid || null, durationMs ? Math.round(durationMs / 1000) : null, t.url || null,
       int(t.listeners), int(t.playcount), int(t.streamable?.["#text"]), int(t.streamable?.fulltrack),
       saveAlbum(t.album), int(t.album?.["@attr"]?.position),
-      t.wiki?.published || null, t.wiki?.summary || null, t.wiki?.content || null,
-      new Date().toISOString(), songId,
+      t.wiki?.published || null, new Date().toISOString(), songId,
     );
     db.exec("COMMIT");
   } catch (e) {
