@@ -39,11 +39,14 @@ Scala.js (Scala 3, sbt) frontend using [Laminar](https://github.com/raquo/Lamina
 
 ## Crawled users database
 
-- `.github/workflows/crawl-users.yml` runs every 2 hours (and on demand). It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
+- `.github/workflows/crawl-users.yml` is **paused** (disabled in GitHub; turn it back on with `gh workflow enable crawl-users.yml`). When enabled, it runs every 2 hours and on demand. It runs `scripts/crawl-friends.mjs`, which walks `user.getFriends` out from random not-yet-crawled users and stores the results in SQLite (`node:sqlite`, Node 24+).
 - The database is published age-encrypted at `gh-pages:data/users.db.age`. Tables: `users` (profile fields from the friends payload, `depth`, `discovered_via`, `crawled_at`), `friendships` (user → friend edges), `runs` (per-run stats).
 - Each user's friends are fetched once (`crawled_at`); later runs reuse the `friendships` table instead of calling the API.
 - To inspect it locally, decrypt it outside the repo: `node scripts/decrypt.mjs users.db.age <temp>/users.db` (needs `LAST_FM_AGE_IDENTITY`).
-- The repo is public, so Actions logs are too: the crawler logs counts only, never usernames.
+- `.github/workflows/fetch-top-tracks.yml` runs hourly (and on demand). It runs `scripts/fetch-top-tracks.mjs`, which makes two `user.getTopTracks` requests per user (`period=overall` and `period=12month`, `limit=50`, no pagination), starting with `LAST_FM_USERNAME` and then the fewest friend-hops. **It's a one-time pull: never refresh a user's data.** Anyone with `users.songs_fetched_at` set is never requested again.
+- Song data is normalized. Tables: `artists`, `songs` (each song stored once), `periods`, `user_songs` (user → song, by ID, with rank and plays), `user_song_stats` (per user and period: play totals, top song and artist, artist concentration, overlap between the two periods, `similarity_to_me`), `song_runs`. Views with readable names: `user_songs_named`, `song_stats`.
+- Both scripts stop at 90 MB: Last.fm's API terms cap stored data at 100 MB (section 4.3.4), and GitHub rejects files over 100 MB.
+- The repo is public, so Actions logs are too: the scripts log counts only, never usernames.
 
 ## Last.fm Authentication
 

@@ -82,7 +82,8 @@ async function getFriendsPage(user, page) {
       await sleep(2000 * (attempt + 1));
       continue;
     }
-    if (data.error) return { friends: [], error: `${data.error}: ${data.message ?? ""}`.trim(), permanent: true };
+    // Only 6 (not found) and 17 (private) are about this user. Others, like a bad API key, must not mark them done.
+    if (data.error) return { friends: [], error: `${data.error}: ${data.message ?? ""}`.trim(), permanent: data.error === 6 || data.error === 17 };
     const f = data.friends?.user ?? [];
     const attr = data.friends?.["@attr"] ?? {};
     return {
@@ -198,6 +199,15 @@ if (importJson && q.count.get().n === 0 && fs.existsSync(importJson)) {
 }
 
 // ---- Crawl -----------------------------------------------------------------------------------
+
+// Last.fm's API terms cap stored data at 100 MB (section 4.3.4), and GitHub rejects files over 100 MB.
+const MAX_DB_BYTES = 90 * 1024 * 1024;
+if (fs.statSync(localDb).size >= MAX_DB_BYTES) {
+  console.log("::warning::Database is at the 90 MB limit, so no users were crawled");
+  db.close();
+  fs.rmSync(workDir, { recursive: true, force: true });
+  process.exit(0);
+}
 
 const startedAt = now();
 const runId = db.prepare("INSERT INTO runs (started_at) VALUES (?)").run(startedAt).lastInsertRowid;

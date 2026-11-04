@@ -1,0 +1,64 @@
+name: Fetch top songs
+
+on:
+  schedule:
+    - cron: "47 * * * *" # every hour (off the top of the hour, which GitHub delays most)
+  workflow_dispatch:
+    inputs:
+      max_users:
+        description: "Stop after this many users"
+        default: "5000"
+      minutes:
+        description: "Stop fetching after this many minutes, keeping progress"
+        default: "40"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-write
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Checkout gh-pages branch
+        shell: bash
+        run: git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Fetch top songs (decrypts, updates, re-encrypts data/users.db.age)
+        env:
+          LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+          LAST_FM_USERNAME: ${{ secrets.LAST_FM_USERNAME }}
+          LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
+          # Scheduled runs have no inputs, so fall back to the defaults.
+          MAX_USERS: ${{ inputs.max_users || '5000' }}
+          MINUTES: ${{ inputs.minutes || '40' }}
+        run: |
+          node feature/scripts/fetch-top-tracks.mjs \
+            --db pages/data/users.db.age \
+            --max-users "$MAX_USERS" \
+            --minutes "$MINUTES"
+
+      - name: Commit users.db.age to gh-pages
+        uses: EndBug/add-and-commit@v9
+        with:
+          cwd: pages
+          add: "data"
+          message: "Update encrypted top songs"
+          push: origin gh-pages --set-upstream
