@@ -17,3 +17,4 @@ case "$table" in
   *) cat > /dev/null; exit 0 ;;
 esac
 cut -f"$columns" > "$1/$table"
+echo "$(date -u +%H:%M:%S) kept $table: $(du -h "$1/$table" | cut -f1)"

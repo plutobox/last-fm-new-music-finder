@@ -51,9 +51,12 @@ jobs:
           echo "Dump: $latest"
           df -h . | tail -1
           mkdir -p dump
+          # lbzip2 decompresses on every CPU core, which plain bzip2 can't.
+          sudo apt-get install -y -qq lbzip2 > /dev/null
           set -o pipefail
           curl -fsS -A "$agent" --retry 5 "$base/$latest/mbdump.tar.bz2" \
-            | tar -xjf - --to-command="bash feature/scripts/mb-keep-columns.sh dump" \
+            | lbzip2 -dc \
+            | tar -xf - --to-command="bash feature/scripts/mb-keep-columns.sh dump" \
               mbdump/artist mbdump/artist_credit_name mbdump/recording mbdump/track mbdump/medium \
               mbdump/release_country mbdump/release_unknown_country mbdump/l_recording_url mbdump/url
           du -sh dump
