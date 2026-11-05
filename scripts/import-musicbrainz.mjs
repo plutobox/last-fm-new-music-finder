@@ -1,12 +1,13 @@
-// Fills songs.release_year and songs.youtube_id from a MusicBrainz database dump, with no API calls.
+// Fills songs.release_year, songs.youtube_id and songs.spotify_id from a MusicBrainz database dump, with no API calls.
 // Usage: node scripts/import-musicbrainz.mjs --dump <folder of extracted mbdump tables> --db db/users.db.age
 // Tables needed: artist, artist_credit_name, recording, track, medium, release_country, release_unknown_country,
-// l_recording_url, url.
+// l_recording_url, l_release_url, url.
 //
 // A song is linked to MusicBrainz recordings two ways:
 // - its Last.fm MBID, which is usually a MusicBrainz track ID and sometimes a recording ID
 // - the same title by the same artist, using the artist's MBID where we have it and the exact name otherwise
-// Its year is the earliest release of any linked recording, and its video is the lowest-numbered YouTube link.
+// Its year is the earliest release of any linked recording, and its video and Spotify track are the
+// lowest-numbered links of each kind. Spotify album links are only counted: they don't identify the exact song.
 // Rerunning is safe: it's offline, and every value comes fresh from the dump.
 //
 // --check reports coverage and sample songs without saving anything.
@@ -38,6 +39,8 @@ if (!(encrypted ? encryptedDbExists(dbPath) : fs.existsSync(dbPath))) throw new 
 
 const THIS_YEAR = new Date().getUTCFullYear();
 const YOUTUBE_ID = /(?:youtube\.com\/watch\?(?:.*&)?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})(?![\w-])/;
+const SPOTIFY_TRACK_ID = /open\.spotify\.com\/(?:intl-[a-z]+\/)?track\/([A-Za-z0-9]{22})(?![A-Za-z0-9])/;
+const SPOTIFY_ALBUM = /open\.spotify\.com\/(?:intl-[a-z]+\/)?album\//;
 const started = Date.now();
 const log = (message) => console.log(`[${Math.round((Date.now() - started) / 1000)}s] ${message}`);
 
@@ -69,7 +72,7 @@ const db = new DatabaseSync(localDb);
 db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 
 const columnsOf = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
-for (const name of ["release_year INTEGER", "youtube_id TEXT"]) {
+for (const name of ["release_year INTEGER", "youtube_id TEXT", "spotify_id TEXT"]) {
   if (!columnsOf("songs").includes(name.split(" ")[0])) db.exec(`ALTER TABLE songs ADD COLUMN ${name}`);
 }
 
@@ -156,7 +159,7 @@ const noteYear = (release, yearText) => {
 await eachRow("release_country", (r) => noteYear(r[0], r[1]));
 await eachRow("release_unknown_country", (r) => noteYear(r[0], r[1]));
 
-// ---- YouTube links ----------------------------------------------------------------------------
+// ---- YouTube and Spotify links ----------------------------------------------------------------
 
 const recordingsByUrl = new Map(); // url id -> [{ linkId, recording }]
 await eachRow("l_recording_url", (r) => {
@@ -165,16 +168,34 @@ await eachRow("l_recording_url", (r) => {
   const entry = { linkId: Number(r[0]), recording: r[1] };
   if (list) list.push(entry); else recordingsByUrl.set(r[2], [entry]);
 });
-const videoBySong = new Map(); // song id -> { linkId, videoId }
-await eachRow("url", (r) => {
-  const links = recordingsByUrl.get(r[0]);
-  if (!links) return;
-  const videoId = r[1].match(YOUTUBE_ID)?.[1];
-  if (!videoId) return;
+const releasesByUrl = new Map(); // url id -> releases of our songs
+await eachRow("l_release_url", (r) => { if (recordingsByRelease.has(r[0])) addTo(releasesByUrl, r[1], r[0]); });
+
+const videoBySong = new Map(); // song id -> { linkId, id }
+const spotifyBySong = new Map(); // song id -> { linkId, id }
+const spotifyAlbumSongs = new Set();
+const keepLowest = (bySong, links, id) => {
   for (const { linkId, recording } of links) {
     for (const song of songsByRecording.get(recording)) {
-      const best = videoBySong.get(song);
-      if (!best || linkId < best.linkId) videoBySong.set(song, { linkId, videoId });
+      const best = bySong.get(song);
+      if (!best || linkId < best.linkId) bySong.set(song, { linkId, id });
+    }
+  }
+};
+await eachRow("url", (r) => {
+  const links = recordingsByUrl.get(r[0]);
+  if (links) {
+    const videoId = r[1].match(YOUTUBE_ID)?.[1];
+    if (videoId) keepLowest(videoBySong, links, videoId);
+    const spotifyId = r[1].match(SPOTIFY_TRACK_ID)?.[1];
+    if (spotifyId) keepLowest(spotifyBySong, links, spotifyId);
+  }
+  const releases = releasesByUrl.get(r[0]);
+  if (releases && SPOTIFY_ALBUM.test(r[1])) {
+    for (const release of releases) {
+      for (const rec of recordingsByRelease.get(release)) {
+        for (const song of songsByRecording.get(rec)) spotifyAlbumSongs.add(song);
+      }
     }
   }
 });
@@ -189,10 +210,11 @@ const listeners = new Map(db.prepare(`
   FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
   GROUP BY song_id
 `).all().map((r) => [r.song_id, r.n]));
+const spotifyAlbumOnly = new Set([...spotifyAlbumSongs].filter((id) => !spotifyBySong.has(id)));
 const byPopularity = [...songs].sort((a, b) => (listeners.get(b.id) ?? 0) - (listeners.get(a.id) ?? 0));
 const report = (label, list) => {
   const part = (m) => { const n = list.filter((s) => m.has(s.id)).length; return `${n} (${Math.round((n * 100) / Math.max(1, list.length))}%)`; };
-  log(`${label}, ${list.length} songs: linked ${part(linked)}, year ${part(yearBySong)}, YouTube ${part(videoBySong)}`);
+  log(`${label}, ${list.length} songs: linked ${part(linked)}, year ${part(yearBySong)}, YouTube ${part(videoBySong)}, Spotify track ${part(spotifyBySong)}, Spotify album only ${part(spotifyAlbumOnly)}`);
 };
 report("Top 1,000", byPopularity.slice(0, 1000));
 report("Top 20,000", byPopularity.slice(0, 20000));
@@ -202,15 +224,15 @@ const knownYears = [["Madonna", "Hung Up", 2005], ["Radiohead", "Creep", 1992], 
 const artistNames = new Map(ourArtists.map((a) => [a.id, a.name]));
 for (const [artist, title, known] of knownYears) {
   const s = songs.find((x) => artistNames.get(x.artist_id) === artist && x.name.toLowerCase() === title.toLowerCase());
-  log(`Known song: ${artist} - ${title}: released ${known}, found ${s ? yearBySong.get(s.id) ?? "no year" : "not in database"}${s && videoBySong.has(s.id) ? ", has video" : ""}`);
+  log(`Known song: ${artist} - ${title}: released ${known}, found ${s ? yearBySong.get(s.id) ?? "no year" : "not in database"}${s && videoBySong.has(s.id) ? ", has video" : ""}${s && spotifyBySong.has(s.id) ? ", has Spotify track" : ""}`);
 }
 
 if ("check" in args) {
   log("Check only, so nothing was saved");
 } else {
-  const save = db.prepare("UPDATE songs SET release_year = ?, youtube_id = ? WHERE id = ?");
+  const save = db.prepare("UPDATE songs SET release_year = ?, youtube_id = ?, spotify_id = ? WHERE id = ?");
   db.exec("BEGIN");
-  for (const s of songs) save.run(yearBySong.get(s.id) ?? null, videoBySong.get(s.id)?.videoId ?? null, s.id);
+  for (const s of songs) save.run(yearBySong.get(s.id) ?? null, videoBySong.get(s.id)?.id ?? null, spotifyBySong.get(s.id)?.id ?? null, s.id);
   db.exec("COMMIT");
   log("Saving the database...");
   db.exec("VACUUM");

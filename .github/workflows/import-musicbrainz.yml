@@ -1,6 +1,6 @@
 name: Import MusicBrainz data
 
-# Adds release years and YouTube IDs from MusicBrainz's database dump, with no API calls. The next
+# Adds release years, YouTube IDs and Spotify IDs from MusicBrainz's database dump, with no API calls. The next
 # Fetch top songs run publishes them to songs.json.
 on:
   schedule:
@@ -58,11 +58,11 @@ jobs:
             | lbzip2 -dc \
             | tar -xf - --to-command="bash feature/scripts/mb-keep-columns.sh dump" \
               mbdump/artist mbdump/artist_credit_name mbdump/recording mbdump/track mbdump/medium \
-              mbdump/release_country mbdump/release_unknown_country mbdump/l_recording_url mbdump/url
+              mbdump/release_country mbdump/release_unknown_country mbdump/l_recording_url mbdump/l_release_url mbdump/url
           du -sh dump
           df -h . | tail -1
 
-      - name: Import release years and YouTube IDs (decrypts, updates, re-encrypts)
+      - name: Import release years, YouTube IDs and Spotify IDs (decrypts, updates, re-encrypts)
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           # Scheduled runs have no inputs, so they save. Manual runs only check, unless told otherwise.

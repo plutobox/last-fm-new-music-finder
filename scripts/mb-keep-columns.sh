@@ -13,6 +13,7 @@ case "$table" in
   release_country) columns=1,3 ;;      # release, date_year
   release_unknown_country) columns=1-2 ;; # release, date_year
   l_recording_url) columns=1,3-4 ;;    # id, entity0, entity1
+  l_release_url) columns=3-4 ;;        # entity0, entity1
   url) columns=1,3 ;;                  # id, url
   *) cat > /dev/null; exit 0 ;;
 esac
