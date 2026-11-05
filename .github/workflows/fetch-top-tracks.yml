@@ -131,7 +131,7 @@ jobs:
           chmod +x yt-dlp_linux
 
       # Metadata only. No video or audio is downloaded, and no cookies or sign-in are used.
-      - name: Find YouTube videos for songs with no MusicBrainz link
+      - name: Find plain audio on YouTube for songs with 5+ listeners
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}

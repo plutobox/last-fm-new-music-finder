@@ -1,8 +1,10 @@
 // Finds plain audio uploads on YouTube, not music videos, which can have intros and other extras. Uses yt-dlp for
-// metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, unless
+// metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 5+ listeners, unless
 // already found through YouTube Music, each searched once, in order of most loved, then most listeners, then most plays.
+// YouTube blocks a run after a couple of thousand searches, so the limited searches go to songs people are likeliest to play.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
-//                                           [--workers 4] [--batch 25] [--max-songs 20000] [--max-api-units 800] [--yt-dlp yt-dlp]
+//                                           [--workers 4] [--batch 25] [--max-songs 20000] [--max-api-units 800]
+//                                           [--min-listeners 5] [--yt-dlp yt-dlp]
 //
 // It only reads the database, so it can run alongside the Last.fm job. Results go to the --results file, and
 // apply-youtube-ids.mjs saves them once that job has finished. Each line holds a song's database ID and its video ID.
@@ -53,6 +55,7 @@ const WORKERS = Number(args.workers ?? 4);
 const MAX_API_UNITS = Number(args["max-api-units"] ?? 800);
 const BATCH = Number(args.batch ?? 25);
 const MAX_SONGS = Number(args["max-songs"] ?? 20000);
+const MIN_LISTENERS = Number(args["min-listeners"] ?? 5);
 const YT_DLP = args["yt-dlp"] ?? "yt-dlp";
 const MAX_CHALLENGES_IN_A_ROW = 3;
 const CHALLENGE = /sign in to confirm|not a bot|http error 403|http error 429|too many requests/i;
@@ -174,7 +177,7 @@ db.exec(`
     SELECT song_id, count(*) AS n
     FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
     GROUP BY song_id
-    HAVING n >= 2
+    HAVING n >= ${MIN_LISTENERS}
   ),
   loved AS (SELECT song_id, count(*) AS n FROM user_loved_songs GROUP BY song_id),
   -- A user can have a song in both periods; the overall count already includes the 12-month plays, so take the higher.
@@ -201,7 +204,7 @@ const queue = db.prepare(`
   LIMIT ?
 `).all(MAX_SONGS);
 const waitingAtStart = db.prepare(`SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE ${WAITING}`).get().n;
-console.log(`Queued ${queue.length} songs, out of ${waitingAtStart} with 2+ listeners not yet searched`);
+console.log(`Queued ${queue.length} songs, out of ${waitingAtStart} with ${MIN_LISTENERS}+ listeners not yet searched`);
 db.close();
 fs.rmSync(workDir, { recursive: true, force: true });
 
