@@ -12,14 +12,23 @@ export function logError(kind, detail = "") {
 }
 
 // The full detail, which can name a user, goes only in the encrypted database. Each script that makes Last.fm requests
-// calls this once it has opened its database.
+// calls this once it has opened its database, which also deletes rows past the retention period. That needs no workflow
+// of its own, which would rewrite the whole database just for this, and could bump a waiting fetch from the queue.
+const ERROR_LOG_RETENTION_DAYS = 2;
 let insertError = null;
 export function saveErrorsTo(db) {
-  db.exec("CREATE TABLE IF NOT EXISTS error_logs (log TEXT NOT NULL)");
-  insertError = db.prepare("INSERT INTO error_logs (log) VALUES (?)");
+  db.exec("CREATE TABLE IF NOT EXISTS error_logs (logged_at TEXT, log TEXT NOT NULL)");
+  if (!db.prepare("PRAGMA table_info(error_logs)").all().some((c) => c.name === "logged_at")) {
+    db.exec("ALTER TABLE error_logs ADD COLUMN logged_at TEXT");
+    // Rows from before this column start with their time.
+    db.exec("UPDATE error_logs SET logged_at = substr(log, 1, 24), log = substr(log, 26)");
+  }
+  const cutoff = new Date(Date.now() - ERROR_LOG_RETENTION_DAYS * 86_400_000).toISOString();
+  db.prepare("DELETE FROM error_logs WHERE logged_at < ?").run(cutoff);
+  insertError = db.prepare("INSERT INTO error_logs (logged_at, log) VALUES (?, ?)");
 }
 export function saveError(text) {
-  insertError?.run(text);
+  insertError?.run(new Date().toISOString(), text);
 }
 
 // Blanks out each of the given values in a message.

@@ -64,7 +64,7 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
     const report = (what, detail = "") => logError(`${params.method}: ${what}`, detail);
     // The encrypted database gets everything, for working out what happened later. params never holds the API key.
     const save = (outcome, message) =>
-      saveError(`${new Date().toISOString()} ${JSON.stringify(params)} ${outcome}: ${scrub(message, [apiKey])}`);
+      saveError(`${JSON.stringify(params)} ${outcome}: ${scrub(message, [apiKey])}`);
     const url = new URL("https://ws.audioscrobbler.com/2.0/");
     url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
     let last = "retries-exhausted", lastMessage = last;
