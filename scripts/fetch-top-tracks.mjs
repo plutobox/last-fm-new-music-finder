@@ -4,7 +4,7 @@
 // Both share the songs and artists tables, so a song on several lists is stored once, and the
 // user_merged_songs view merges them per user.
 // Usage: node scripts/fetch-top-tracks.mjs --db data/users.db.age [--max-users 5000] [--minutes 40]
-//                                          [--part-mb 1900] [--concurrency 3] [--max-per-second 4]
+//                                          [--part-mb 1900] [--concurrency 6] [--max-per-second 4]
 //
 // Requests run in parallel, sharing one speed limit that slows down if Last.fm reports rate limiting.
 //
@@ -38,7 +38,7 @@ if (!apiKey) throw new Error("LAST_FM_API_KEY is not set");
 const PERIODS = [{ id: 1, name: "overall" }, { id: 2, name: "12month" }];
 const LIMIT = 50;
 const LOVED_PAGE_SIZE = Number(args["loved-page-size"] ?? 1000);
-const CONCURRENCY = Number(args.concurrency ?? 3);
+const CONCURRENCY = Number(args.concurrency ?? 6); // enough to reach the speed limit despite slow loved-track pages
 const MAX_CONSECUTIVE_FAILURES = 20;
 
 const dbPath = args.db ?? "data/users.db";
