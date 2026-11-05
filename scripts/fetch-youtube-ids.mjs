@@ -1,6 +1,6 @@
-// Finds YouTube videos for songs with no MusicBrainz link, using yt-dlp for metadata only: no video or audio is
-// downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, each searched once, in order of most loved,
-// then most listeners, then most plays.
+// Finds plain audio uploads on YouTube, not music videos, which can have intros and other extras. Uses yt-dlp for
+// metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, whether
+// or not they already have a video, each searched once, in order of most loved, then most listeners, then most plays.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
 //                                           [--workers 4] [--batch 25] [--max-songs 20000] [--yt-dlp yt-dlp]
 //
@@ -8,11 +8,12 @@
 // apply-youtube-ids.mjs saves them once that job has finished. Each line holds a song's database ID and its video ID.
 //
 // YouTube Music's song search goes first. Every result is then checked with the YouTube Data API (videos.list, about
-// 1 quota unit per 50 videos): it must be public, embeddable, and name the song and artist. Anything that fails gets
-// one try with normal YouTube search, under the same check. A song with no good video stays empty: that's better
-// than playing the wrong thing.
+// 1 quota unit per 50 videos): it must be public, embeddable, name the song and artist, and be plain audio, meaning
+// from an auto-generated "- Topic" channel or titled "Official Audio". Anything that fails gets one try with normal
+// YouTube search, under the same check. A song with no good result keeps any video it already has.
 //
 // Results end up in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs rewrites.
+// A new result replaces an older one, and the public data prefers it to the MusicBrainz link.
 //
 // Stops, keeping its progress, after 3 challenged batches in a row ("Sign in to confirm you're not a bot"). It doesn't
 // try to get past those, and it only warns, so the rest of the workflow still runs. Songs in a failed or challenged
@@ -63,6 +64,8 @@ const has = (haystack, needle) => ` ${haystack} `.includes(` ${needle} `);
 
 function isGoodVideo(song, video) {
   if (video.status?.privacyStatus !== "public" || video.status?.embeddable !== true) return false;
+  const isPlainAudio = / - Topic$/.test(video.snippet?.channelTitle ?? "") || /official audio/i.test(video.snippet?.title ?? "");
+  if (!isPlainAudio) return false;
   const text = norm(`${video.snippet?.title ?? ""} ${video.snippet?.channelTitle ?? ""}`);
   return has(text, coreTitle(song.song)) && has(text, norm(song.artist));
 }
@@ -108,8 +111,8 @@ const musicSearch = (songs) => search(songs, {
   extra: ["--playlist-items", "1"],
 });
 const normalSearch = (songs) => search(songs, {
-  urlFor: (q) => `ytsearch1:${q}`,
-  queryFromTitle: (t) => t,
+  urlFor: (q) => `ytsearch1:${q} official audio`, // plain, this mostly finds music videos
+  queryFromTitle: (t) => t.replace(/ official audio$/, ""),
   extra: [],
 });
 
@@ -147,7 +150,7 @@ db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 
 // Changes this private temp copy only, which is deleted below. The real database gets these from apply-youtube-ids.mjs.
 const columns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
-for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_search_source TEXT", "youtube_searched_at TEXT"]) {
+for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_search_source TEXT", "youtube_searched_at TEXT", "youtube_audio_searched_at TEXT"]) {
   if (!columns.includes(column.split(" ")[0])) db.exec(`ALTER TABLE songs ADD COLUMN ${column}`);
 }
 
@@ -171,7 +174,8 @@ db.exec(`
   LEFT JOIN loved h ON h.song_id = l.song_id
   LEFT JOIN plays p ON p.song_id = l.song_id
 `);
-const WAITING = "s.youtube_id IS NULL AND s.youtube_search_id IS NULL AND s.youtube_searched_at IS NULL";
+// Its own marker, so songs searched before the plain-audio rule get searched again.
+const WAITING = "s.youtube_audio_searched_at IS NULL";
 const queue = db.prepare(`
   SELECT s.id, s.name AS song, a.name AS artist, a.name || ' ' || s.name AS query
   FROM eligible e
@@ -182,7 +186,7 @@ const queue = db.prepare(`
   LIMIT ?
 `).all(MAX_SONGS);
 const waitingAtStart = db.prepare(`SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE ${WAITING}`).get().n;
-console.log(`Queued ${queue.length} songs, out of ${waitingAtStart} with 2+ listeners and no video`);
+console.log(`Queued ${queue.length} songs, out of ${waitingAtStart} with 2+ listeners not yet searched`);
 db.close();
 fs.rmSync(workDir, { recursive: true, force: true });
 

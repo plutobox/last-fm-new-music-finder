@@ -1,8 +1,8 @@
 // Saves the results file from fetch-youtube-ids.mjs into the database, as the one step that writes them.
 // Usage: node scripts/apply-youtube-ids.mjs --results youtube-results.jsonl --db db/users.db.age
 //
-// Only touches songs that are still waiting. A song that gained a video in the meantime keeps it. Applying the same
-// file twice changes nothing. A ".age" --db needs LAST_FM_AGE_IDENTITY.
+// A video found replaces whatever songs.youtube_search_id held. A search that found nothing never clears it. Applying
+// the same file twice changes nothing. A ".age" --db needs LAST_FM_AGE_IDENTITY.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -33,17 +33,28 @@ const db = new DatabaseSync(localDb);
 db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 
 const columns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
-for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_search_source TEXT", "youtube_searched_at TEXT"]) {
+for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_search_source TEXT", "youtube_searched_at TEXT", "youtube_audio_searched_at TEXT"]) {
   if (!columns.includes(column.split(" ")[0])) db.exec(`ALTER TABLE songs ADD COLUMN ${column}`);
 }
 
 const save = db.prepare(`
-  UPDATE songs SET youtube_search_id = ?, youtube_search_source = ?, youtube_searched_at = ?
-  WHERE id = ? AND youtube_id IS NULL AND youtube_search_id IS NULL AND youtube_searched_at IS NULL
+  UPDATE songs SET
+    youtube_search_id = COALESCE(?1, youtube_search_id),
+    youtube_search_source = CASE WHEN ?1 IS NULL THEN youtube_search_source ELSE ?2 END,
+    youtube_searched_at = ?3,
+    youtube_audio_searched_at = ?3
+  WHERE id = ?4
 `);
-let applied = 0;
+const before = db.prepare("SELECT youtube_search_id AS id FROM songs WHERE id = ?");
+let added = 0, replaced = 0, kept = 0, none = 0;
 db.exec("BEGIN");
-for (const r of results) applied += Number(save.run(r.video, r.source, r.at, r.song).changes);
+for (const r of results) {
+  const old = before.get(r.song)?.id ?? null;
+  save.run(r.video, r.source, r.at, r.song);
+  if (!r.video) { if (old) kept++; else none++; }
+  else if (!old) added++;
+  else if (old !== r.video) replaced++;
+}
 db.exec("COMMIT");
 
 console.log("Saving the database...");
@@ -52,4 +63,4 @@ db.close();
 if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 
-console.log(`Applied ${applied} of ${results.length} YouTube results; ${results.length - applied} were no longer waiting.`);
+console.log(`Applied ${results.length} YouTube results: ${added} new, ${replaced} replaced, ${kept} found nothing and kept their video, ${none} found nothing and have none.`);

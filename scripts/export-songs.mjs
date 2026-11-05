@@ -99,7 +99,7 @@ const candidates = db.prepare(`
   ),
   loved AS (SELECT song_id, count(*) AS n FROM user_loved_songs GROUP BY song_id)
   SELECT s.id AS song_id, s.artist_id, a.name AS artist, s.name AS song, ${optionalSongColumn("release_year")} AS year,
-         COALESCE(${optionalSongColumn("youtube_id")}, ${optionalSongColumn("youtube_search_id")}) AS youtube_id, ${optionalSongColumn("spotify_id")} AS spotify_id, l.n AS listeners,
+         COALESCE(${optionalSongColumn("youtube_search_id")}, ${optionalSongColumn("youtube_id")}) AS youtube_id, ${optionalSongColumn("spotify_id")} AS spotify_id, l.n AS listeners,
          coalesce(p.n, 0) AS plays, coalesce(h.n, 0) AS loved_by
   FROM listeners l
   JOIN songs s ON s.id = l.song_id
