@@ -57,6 +57,15 @@ for (const r of results) {
 }
 db.exec("COMMIT");
 
+// One-time cleanup, safe to run repeatedly, and can be removed once it reports 0. Before the fix for failed searches,
+// a song's failed search could mark it as having no match. In a sample of 10, 6 found a good video when searched again.
+const BEFORE_THE_FIX = "2026-11-05T16:00:00.000Z";
+const cleared = db.prepare(`
+  UPDATE songs SET youtube_searched_at = NULL, youtube_audio_searched_at = NULL
+  WHERE youtube_id IS NULL AND youtube_search_id IS NULL AND youtube_searched_at < ?
+`).run(BEFORE_THE_FIX).changes;
+console.log(`Cleared ${cleared} "no match" marks from before the fix, so those songs get searched again.`);
+
 console.log("Saving the database...");
 db.exec("VACUUM");
 db.close();
