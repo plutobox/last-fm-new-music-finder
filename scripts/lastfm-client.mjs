@@ -8,7 +8,7 @@
 // - If LAST_FM_RATE_LIMIT_FILE is set, stopping also creates that file, and a client that finds it sends nothing.
 //   That carries the stop across the steps of a workflow run.
 import fs from "node:fs";
-import { logError } from "./error-log.mjs";
+import { logError, saveError, scrub } from "./error-log.mjs";
 
 const PERMANENT_ERRORS = new Set([6, 17]); // not found / private: specific to this item, don't retry
 const FATAL_ERRORS = new Set([10, 26]); // bad or suspended API key: nothing else will work either
@@ -62,9 +62,12 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
   async function apiGet(params, key) {
     // The log gets the method and a fixed description only, as params can hold a username.
     const report = (what, detail = "") => logError(`${params.method}: ${what}`, detail);
+    // The encrypted database gets everything, for working out what happened later. params never holds the API key.
+    const save = (outcome, message) =>
+      saveError(`${new Date().toISOString()} ${JSON.stringify(params)} ${outcome}: ${scrub(message, [apiKey])}`);
     const url = new URL("https://ws.audioscrobbler.com/2.0/");
     url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
-    let last = "retries-exhausted";
+    let last = "retries-exhausted", lastMessage = last;
     for (let attempt = 0; attempt < 4; attempt++) {
       if (stoppedBecause) return { error: stoppedBecause, kind: "fatal" };
       if (attempt > 0) report(last, `will retry (attempt ${attempt})`);
@@ -77,29 +80,42 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
         data = await res.json().catch(() => ({}));
       } catch (e) {
         last = `network: ${e.name}${e.cause?.code ? ` ${e.cause.code}` : ""}`; // e.message could include the URL, which holds the API key
+        lastMessage = last;
         await sleep(2000 * (attempt + 1));
         continue;
       }
       if (data.error === 29 || res.status === 429) {
         rateLimitHit();
         last = "rate limited";
+        lastMessage = last;
         continue; // waitForSlot holds the retry until the pause is over
       }
       if (data.error) {
         const message = `${data.error}: ${data.message ?? ""}`.trim();
-        if (PERMANENT_ERRORS.has(data.error)) { report(errorName(data.error)); return { error: message, kind: "permanent" }; }
-        if (FATAL_ERRORS.has(data.error)) { report(errorName(data.error)); return { error: message, kind: "fatal" }; }
+        if (PERMANENT_ERRORS.has(data.error)) {
+          report(errorName(data.error));
+          save("permanent", message);
+          return { error: message, kind: "permanent" };
+        }
+        if (FATAL_ERRORS.has(data.error)) {
+          report(errorName(data.error));
+          save("fatal", message);
+          return { error: message, kind: "fatal" };
+        }
         last = errorName(data.error);
+        lastMessage = message;
       } else if (res.ok && data[key]) {
         hits = 0;
         intervalMs = Math.max(minIntervalMs, intervalMs * 0.99);
         return data[key];
       } else {
         last = `http ${res.status}`;
+        lastMessage = last;
       }
       await sleep(2000 * (attempt + 1)); // temporary errors (8, 11, 16) or server trouble
     }
     report(last, "gave up after 4 tries");
+    save("gave up after 4 tries", lastMessage);
     return { error: last, kind: "transient" };
   }
 

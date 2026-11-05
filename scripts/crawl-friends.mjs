@@ -20,6 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Decrypter } from "age-encryption";
+import { saveErrorsTo } from "./error-log.mjs";
 import { createClient } from "./lastfm-client.mjs";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 
@@ -82,6 +83,7 @@ if (encrypted && encryptedDbExists(dbPath)) fs.writeFileSync(localDb, await read
 fs.mkdirSync(path.dirname(localDb), { recursive: true });
 
 const db = new DatabaseSync(localDb);
+saveErrorsTo(db);
 db.exec(`
   PRAGMA journal_mode = DELETE;  -- single self-contained file, since it gets encrypted and shipped
   PRAGMA foreign_keys = ON;

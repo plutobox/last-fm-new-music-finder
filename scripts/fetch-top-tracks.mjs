@@ -23,6 +23,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { saveErrorsTo } from "./error-log.mjs";
 import { createClient } from "./lastfm-client.mjs";
 import { startProgress } from "./progress.mjs";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
@@ -141,6 +142,7 @@ const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
 if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
 
 const db = new DatabaseSync(localDb);
+saveErrorsTo(db);
 db.exec(`
   PRAGMA journal_mode = DELETE;
   PRAGMA synchronous = OFF;  -- a crash just means rerunning from the last published copy

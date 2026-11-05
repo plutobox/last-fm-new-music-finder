@@ -11,6 +11,17 @@ export function logError(kind, detail = "") {
   if (n === MAX_PER_KIND) console.log(`[error] ${kind}: not printing more of these, only counting them`);
 }
 
+// The full detail, which can name a user, goes only in the encrypted database. Each script that makes Last.fm requests
+// calls this once it has opened its database.
+let insertError = null;
+export function saveErrorsTo(db) {
+  db.exec("CREATE TABLE IF NOT EXISTS error_logs (log TEXT NOT NULL)");
+  insertError = db.prepare("INSERT INTO error_logs (log) VALUES (?)");
+}
+export function saveError(text) {
+  insertError?.run(text);
+}
+
 // Blanks out each of the given values in a message.
 export function scrub(text, values) {
   let out = String(text);
