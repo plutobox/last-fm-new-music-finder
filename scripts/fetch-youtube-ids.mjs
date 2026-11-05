@@ -15,7 +15,8 @@
 // Results end up in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs fills.
 // A new result replaces an older one, and the public data prefers it to the MusicBrainz link.
 //
-// Stops, keeping its progress, after 3 challenged batches in a row ("Sign in to confirm you're not a bot"). It doesn't
+// Stops, keeping its progress, after 3 challenged batches in a row ("Sign in to confirm you're not a bot", or a 403 or
+// 429 from YouTube). It doesn't
 // try to get past those, and it only warns, so the rest of the workflow still runs. Songs in a failed or challenged
 // search aren't marked, so a later run retries them.
 //
@@ -53,7 +54,7 @@ const BATCH = Number(args.batch ?? 25);
 const MAX_SONGS = Number(args["max-songs"] ?? 20000);
 const YT_DLP = args["yt-dlp"] ?? "yt-dlp";
 const MAX_CHALLENGES_IN_A_ROW = 3;
-const CHALLENGE = /sign in to confirm|not a bot|http error 429|too many requests/i;
+const CHALLENGE = /sign in to confirm|not a bot|http error 403|http error 429|too many requests/i;
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 const encrypted = dbPath.endsWith(".age");
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");
