@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
 import { createClient } from "./lastfm-client.mjs";
 import { startProgress } from "./progress.mjs";
-import { addProfileColumns, FRIEND_COUNTS, FRIENDS } from "./user-activity.mjs";
+import { addProfileColumns, FRIEND_COUNTS, FRIENDS, LIKELY_BOT_PLAYS_PER_DAY, PLAYS_PER_DAY } from "./user-activity.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -106,6 +106,10 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
 progress.stop();
 
 const left = countLeft.get().n;
+// Counts only, to check the likely-bot cutoff against real numbers.
+const rates = db.prepare(`SELECT ${PLAYS_PER_DAY} AS r FROM users u WHERE u.total_plays > 0 AND u.registered_at > 0 ORDER BY r`).all().map((x) => x.r);
+const percentile = (p) => (rates.length ? Math.round(rates[Math.min(rates.length - 1, Math.floor(rates.length * p))]) : 0);
+const likelyBots = rates.filter((r) => r >= LIKELY_BOT_PLAYS_PER_DAY).length;
 db.close();
 console.log("Saving the database...");
 if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
@@ -114,5 +118,9 @@ fs.rmSync(workDir, { recursive: true, force: true });
 console.log(
   `User profiles: ${fetched} fetched, ${errored} errored, ${left} left, ${client.stats.requests} requests ` +
   `(${client.stats.rateLimited} rate limited). Stopped: ${stopReason}`
+);
+console.log(
+  `Listens a day across ${rates.length} users: median ${percentile(0.5)}, 90th percentile ${percentile(0.9)}, 99th ${percentile(0.99)}, ` +
+  `highest ${percentile(1)}. ${likelyBots} at or above the likely-bot cutoff of ${LIKELY_BOT_PLAYS_PER_DAY}.`
 );
 if (!/queue finished|time limit/.test(stopReason)) console.log(`::warning::Stopped early: ${stopReason}`);
