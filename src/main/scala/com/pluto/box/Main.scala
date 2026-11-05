@@ -25,6 +25,28 @@ private def fetchText(url: String): Future[String] =
     if response.ok then response.text().toFuture
     else throw new Exception(s"the server answered ${response.status}")
 
+private def fetchIfThere(url: String): Future[Option[String]] =
+  dom.fetch(url).toFuture.flatMap: response =>
+    if response.status == 404 then Future.successful(None)
+    else if response.ok then response.text().toFuture.map(Some(_))
+    else throw new Exception(s"the server answered ${response.status}")
+
+// The manifest is fetched fresh, and its build time keeps a browser from using a cached older file. A song with no
+// file or no entry simply has no matches yet.
+private def loadMatches(library: Library, id: Int): Future[Vector[SongMatch]] =
+  fetchIfThere(s"$dataRoot/similar/manifest.json?t=${js.Date.now().toLong}").flatMap:
+    case None => Future.successful(Vector.empty)
+    case Some(text) =>
+      val (builtAt, shards) = Songs.parseMatchFiles(text)
+      val name = s"00${id % shards}".takeRight(3)
+      fetchIfThere(s"$dataRoot/similar/$name.json?v=${js.URIUtils.encodeURIComponent(builtAt)}")
+        .map(_.fold(Vector.empty[SongMatch])(Songs.parseMatches(_, library, id)))
+
+private enum MatchLoad:
+  case Loading
+  case Failed(message: String)
+  case Ready(matches: Vector[SongMatch])
+
 private def formatCount(n: Int): String =
   n.toString.reverse.grouped(3).mkString(",").reverse
 
@@ -225,38 +247,125 @@ private def finder(library: Library) =
       )
   )
 
+  def playButton(s: Song, queue: Vector[Song]) =
+    div(
+      child <-- player.unplayable.signal.map(_ => s.youtubeId.exists(player.unplayable.now())).distinct.map: known =>
+        if s.youtubeId.isDefined && !known then
+          button(
+            typ := "button",
+            cls := "play",
+            aria.label := s"Play ${s.title} by ${s.artist}",
+            "▶︎",
+            onClick --> (_ => player.play(s, queue.filter(_.youtubeId.isDefined)))
+          )
+        else
+          a(
+            cls := "play play-away",
+            href := s.youtubeSearchUrl,
+            target := "_blank",
+            rel := "noopener",
+            aria.label := s"Search YouTube for ${s.title} by ${s.artist}, in a new tab",
+            title := "No playable video here. Search YouTube in a new tab.",
+            "↗︎"
+          )
+    )
+
+  // The song whose matches are showing, if any.
+  val matchesFor = Var[Option[Song]](None)
+  val matchLoad = Var[MatchLoad](MatchLoad.Loading)
+  var openedFrom: Option[dom.HTMLElement] = None
+
+  def showMatches(s: Song, id: Int): Unit =
+    if matchesFor.now().isEmpty then
+      openedFrom = Option(dom.document.activeElement).collect { case e: dom.HTMLElement => e }
+    matchesFor.set(Some(s))
+    matchLoad.set(MatchLoad.Loading)
+    loadMatches(library, id).onComplete: outcome =>
+      // Ignored if another song was chosen, or the box closed, while this one loaded.
+      if matchesFor.now().contains(s) then
+        outcome match
+          case Success(matches) => matchLoad.set(MatchLoad.Ready(matches))
+          case Failure(e)       => matchLoad.set(MatchLoad.Failed(e.getMessage))
+
+  def closeMatches(): Unit =
+    if matchesFor.now().isDefined then
+      matchesFor.set(None)
+      openedFrom.foreach(_.focus())
+      openedFrom = None
+
+  def likeButton(s: Song) =
+    s.id.map: id =>
+      button(typ := "button", cls := "like", "Like this song? Click here", onClick --> (_ => showMatches(s, id)))
+
+  // Not a true modal, so the player bar above it keeps working while you listen through the results.
+  val matchesBox = div(
+    child.maybe <-- matchesFor.signal.map(_.map: s =>
+      div(
+        cls := "matches-backdrop",
+        onClick --> (e => if e.target == e.currentTarget then closeMatches()),
+        div(
+          cls := "matches",
+          role := "dialog",
+          aria.label := s"Songs for people who like ${s.title}",
+          div(
+            cls := "matches-head",
+            div(
+              h2("If you like"),
+              div(cls := "matches-song", s"${s.title}, ${s.artist}")
+            ),
+            button(
+              typ := "button",
+              cls := "reset",
+              "Close",
+              onMountCallback(ctx => ctx.thisNode.ref.focus()),
+              onClick --> (_ => closeMatches())
+            )
+          ),
+          child <-- matchLoad.signal.map:
+            case MatchLoad.Loading         => p("Finding songs...")
+            case MatchLoad.Failed(message) => p(s"Couldn't load the matches: $message.")
+            case MatchLoad.Ready(matches) if matches.isEmpty =>
+              p("No matches for this song yet. It needs at least 5 listeners, and matches update weekly.")
+            case MatchLoad.Ready(matches) =>
+              div(
+                p(cls := "hint", "Most likely first, based on what this song's listeners also listen to or love."),
+                ol(
+                  cls := "matches-list",
+                  matches.map: m =>
+                    li(
+                      cls("is-playing") <-- player.current.signal.map(_.contains(m.song)),
+                      playButton(m.song, matches.map(_.song)),
+                      div(
+                        cls := "track",
+                        a(href := m.song.url, target := "_blank", rel := "noopener", cls := "title", m.song.title),
+                        div(cls := "artist", m.song.year.fold(m.song.artist)(y => s"${m.song.artist}, $y")),
+                        div(cls := "tags", s"${formatCount(m.sharedListeners)} listeners in common · ${m.song.genres.mkString(", ")}"),
+                        likeButton(m.song)
+                      )
+                    )
+                )
+              )
+        )
+      )
+    ),
+    documentEvents(_.onKeyDown) --> (e => if e.key == "Escape" then closeMatches())
+  )
+
   def row(position: Int, s: Song, results: Vector[Song]) =
     tr(
       cls("is-playing") <-- player.current.signal.map(_.contains(s)),
       td(
         cls := "pos",
         div(position.toString),
-        child <-- player.unplayable.signal.map(_ => s.youtubeId.exists(player.unplayable.now())).distinct.map: known =>
-          if s.youtubeId.isDefined && !known then
-            button(
-              typ := "button",
-              cls := "play",
-              aria.label := s"Play ${s.title} by ${s.artist}",
-              "▶︎",
-              onClick --> (_ => player.play(s, results.filter(_.youtubeId.isDefined)))
-            )
-          else
-            a(
-              cls := "play play-away",
-              href := s.youtubeSearchUrl,
-              target := "_blank",
-              rel := "noopener",
-              aria.label := s"Search YouTube for ${s.title} by ${s.artist}, in a new tab",
-              title := "No playable video here. Search YouTube in a new tab.",
-              "↗︎"
-            )
+        playButton(s, results)
       ),
       td(
         cls := "track",
         div(cls := "bar", styleAttr := s"width:${(s.listeners * 100.0 / library.maxListeners).max(1.5)}%"),
         a(href := s.url, target := "_blank", rel := "noopener", cls := "title", s.title),
         div(cls := "artist", s.year.fold(s.artist)(y => s"${s.artist}, $y")),
-        div(cls := "tags", s.genres.mkString(", "))
+        div(cls := "tags", s.genres.mkString(", ")),
+        likeButton(s)
       ),
       td(cls := "num", dataAttr("label") := "Listeners", formatCount(s.listeners)),
       td(cls := "num", dataAttr("label") := "Plays", formatCount(s.plays)),
@@ -311,5 +420,6 @@ private def finder(library: Library) =
       a(href := "https://www.last.fm", target := "_blank", rel := "noopener", "Last.fm"),
       s". Updated ${library.builtAt.take(10)}."
     ),
+    matchesBox,
     player.element
   )

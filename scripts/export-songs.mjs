@@ -21,7 +21,7 @@ const args = Object.fromEntries(
 
 const MIN_LISTENERS = 2;
 const MIN_TAG_COUNT = 20; // ignore tags Last.fm itself weights weakly for an artist
-const COLUMNS = ["artist", "song", "genres", "listeners", "plays", "loved_by", "year", "youtube_id", "spotify_id"];
+const COLUMNS = ["artist", "song", "genres", "listeners", "plays", "loved_by", "year", "youtube_id", "spotify_id", "id"];
 
 // Only these become genres, so tags like "seen live" or an artist's own name never reach the file.
 // Keys are Last.fm tags in lowercase; values are the genre shown.
@@ -119,7 +119,7 @@ for (const c of candidates) {
   const own = songGenres.get(c.song_id);
   const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
-  lines.push(JSON.stringify([c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id]));
+  lines.push(JSON.stringify([c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id, c.song_id]));
   if (own) fromSong++; else fromArtist++;
 }
 

@@ -1,0 +1,97 @@
+name: Build song matches
+
+# For the site's "Like this song?" button. Only reads the database, so it isn't in the database-write group.
+on:
+  schedule:
+    - cron: "12 7 * * 0" # weekly: the files are large, and rebuilding less often keeps gh-pages smaller
+  workflow_dispatch:
+    inputs:
+      songs:
+        description: 'Optional. Comma-separated songs to build, each "Artist - Song" or a title. Empty builds every song with 5+ listeners. Use double quotes around a name with a comma.'
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-similar
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340 # 300 of building, plus moving the database and files
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
+      - name: List the public songs, so matches only use those
+        env:
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+        run: node --max-old-space-size=12288 feature/scripts/export-songs.mjs --db db/users.db.age --out public-songs
+
+      # Song IDs and counts of shared listeners only. No usernames or per-user data.
+      - name: Build the matches
+        env:
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+          SONGS: ${{ inputs.songs }}
+        run: node --max-old-space-size=12288 feature/scripts/export-similar.mjs --db db/users.db.age --songs-dir public-songs --out similar-out
+
+      - name: Keep the matches for the next job
+        uses: actions/upload-artifact@v7
+        with:
+          name: similar-out
+          path: similar-out
+          retention-days: 1
+
+  # Separate, so the long build doesn't hold up everything else that publishes to gh-pages.
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: gh-pages-write
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Checkout gh-pages branch
+        run: git clone --branch gh-pages --depth 1 "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" pages
+
+      - name: Get the matches
+        uses: actions/download-artifact@v8
+        with:
+          name: similar-out
+          path: similar-out
+
+      - name: Merge the matches into the site's data
+        run: node feature/scripts/merge-similar.mjs --from similar-out --into pages/data/similar
+
+      - name: Commit the matches to gh-pages
+        uses: EndBug/add-and-commit@v11
+        with:
+          cwd: pages
+          add: "data/similar"
+          message: "Update song matches"
+          push: origin gh-pages --set-upstream

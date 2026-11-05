@@ -170,6 +170,57 @@
       .play-away:hover { border-color: var(--blue); }
       tr.is-playing .title { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 3px; }
 
+      .like {
+        display: block;
+        margin-top: 0.375rem;
+        min-height: 2rem;
+        padding: 0.125rem 0.625rem;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: var(--blue);
+        background: transparent;
+        border: 2px solid var(--line);
+        border-radius: 0.375rem;
+        cursor: pointer;
+      }
+      .like:hover { border-color: var(--blue); }
+
+      /* Below the player, which stays usable while the results are open. */
+      .matches-backdrop {
+        position: fixed;
+        z-index: 1;
+        inset: 0;
+        padding: 1rem 1rem 6rem;
+        background: rgb(10 8 40 / 0.6);
+      }
+      .matches {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-width: 44rem;
+        max-height: 100%;
+        margin: 0 auto;
+        padding: 1.25rem;
+        overflow-y: auto;
+        background: var(--paper);
+        border: 2px solid var(--line);
+        border-radius: 0.5rem;
+      }
+      .matches p { margin: 0; }
+      .matches-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+      .matches-head h2 { margin: 0; font: 800 1.75rem/1.1 "Bricolage Grotesque", system-ui, sans-serif; color: var(--blue); }
+      .matches-song { font-weight: 700; overflow-wrap: anywhere; }
+      .matches-list { margin: 0; padding: 0; list-style: none; }
+      .matches-list li {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.75rem;
+        padding: 0.75rem 0;
+        border-top: 1px solid var(--line);
+      }
+      .matches-list li.is-playing .title { text-decoration: underline; text-decoration-color: var(--gold); text-decoration-thickness: 3px; }
+      @media (max-width: 52rem) { .matches-backdrop { padding-bottom: 9rem; } }
+
       /* Room for the bar, so it never covers the last rows. */
       .finder { padding-bottom: 6rem; }
 

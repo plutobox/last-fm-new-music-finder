@@ -11,7 +11,8 @@ final case class Song(
   plays: Int,
   lovedBy: Int,
   year: Option[Int],
-  youtubeId: Option[String]
+  youtubeId: Option[String],
+  id: Option[Int] = None
 ):
   val artistLower: String = artist.toLowerCase
   val titleLower: String = title.toLowerCase
@@ -68,8 +69,16 @@ final case class Library(songs: Vector[Song], builtAt: String):
   // Every genre with its song count, biggest first.
   val genres: Vector[(String, Int)] =
     songs.flatMap(_.genres).groupMapReduce(identity)(_ => 1)(_ + _).toVector.sortBy((g, n) => (-n, g))
+  // Built on the first "Like this song?" click, as most visits won't need it.
+  lazy val byId: js.Map[Int, Song] =
+    val map = new js.Map[Int, Song]()
+    for s <- songs; id <- s.id do map(id) = s
+    map
 
 final case class Result(matched: Int, songs: Vector[Song])
+
+// A song the listeners of another song also listen to or love.
+final case class SongMatch(song: Song, sharedListeners: Int)
 
 object Songs:
   private def number(s: String): Option[Int] = s.trim.toIntOption
@@ -88,6 +97,17 @@ object Songs:
     val rows = parts.iterator.flatMap(text => js.JSON.parse(text).rows.asInstanceOf[js.Array[js.Array[js.Any]]].iterator)
     Library(readRows(manifest.columns, rows), manifest.builtAt)
 
+  // data/similar/manifest.json: when the matches were built, and how many files they're split across.
+  def parseMatchFiles(text: String): (String, Int) =
+    val root = js.JSON.parse(text)
+    (root.built_at.asInstanceOf[String], root.shards.asInstanceOf[Int])
+
+  // One of the split match files, already best first. Skips any song no longer in the public list.
+  def parseMatches(text: String, library: Library, id: Int): Vector[SongMatch] =
+    val root = js.JSON.parse(text).asInstanceOf[js.Dictionary[js.Array[js.Array[Int]]]]
+    root.get(id.toString).toVector.flatMap(_.toVector).flatMap: pair =>
+      library.byId.get(pair(0)).map(song => SongMatch(song, pair(1)))
+
   // The older single-file form.
   def parse(text: String): Library =
     val root = js.JSON.parse(text)
@@ -105,6 +125,7 @@ object Songs:
     // Optional: older copies of the file don't have these.
     val year = columns.indexOf("year")
     val youtubeId = columns.indexOf("youtube_id")
+    val songId = columns.indexOf("id")
     val songs = rows.map: r =>
       Song(
         artist = r(artist).asInstanceOf[String],
@@ -114,7 +135,8 @@ object Songs:
         plays = r(plays).asInstanceOf[Int],
         lovedBy = r(loved).asInstanceOf[Int],
         year = if year < 0 || r(year) == null then None else Some(r(year).asInstanceOf[Int]),
-        youtubeId = if youtubeId < 0 || r(youtubeId) == null then None else Some(r(youtubeId).asInstanceOf[String])
+        youtubeId = if youtubeId < 0 || r(youtubeId) == null then None else Some(r(youtubeId).asInstanceOf[String]),
+        id = if songId < 0 || r(songId) == null then None else Some(r(songId).asInstanceOf[Int])
       )
     songs.toVector
 
