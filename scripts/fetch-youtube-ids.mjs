@@ -1,6 +1,6 @@
 // Finds plain audio uploads on YouTube, not music videos, which can have intros and other extras. Uses yt-dlp for
-// metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, whether
-// or not they already have a video, each searched once, in order of most loved, then most listeners, then most plays.
+// metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, unless
+// already found through YouTube Music, each searched once, in order of most loved, then most listeners, then most plays.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
 //                                           [--workers 4] [--batch 25] [--max-songs 20000] [--yt-dlp yt-dlp]
 //
@@ -174,8 +174,9 @@ db.exec(`
   LEFT JOIN loved h ON h.song_id = l.song_id
   LEFT JOIN plays p ON p.song_id = l.song_id
 `);
-// Its own marker, so songs searched before the plain-audio rule get searched again.
-const WAITING = "s.youtube_audio_searched_at IS NULL";
+// Its own marker, so songs searched before the plain-audio rule get one more search. Songs already found through
+// YouTube Music are skipped: that search almost always gives plain audio, and usually the same video again.
+const WAITING = "s.youtube_audio_searched_at IS NULL AND s.youtube_search_source IS NOT 'music'";
 const queue = db.prepare(`
   SELECT s.id, s.name AS song, a.name AS artist, a.name || ' ' || s.name AS query
   FROM eligible e
