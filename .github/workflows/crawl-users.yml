@@ -32,11 +32,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       LAST_FM_RATE_LIMIT_FILE: rate-limit-hit # lets one step's rate-limit stop reach the later steps
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # built-in node:sqlite
 

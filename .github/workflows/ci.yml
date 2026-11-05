@@ -18,16 +18,16 @@ jobs:
 
     steps:
       - name: Cancel Previous Runs
-        uses: styfle/cancel-workflow-action@0.9.1
+        uses: styfle/cancel-workflow-action@0.13.1
         with:
           access_token: ${{ github.token }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
       - name: Setup JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: "zulu"
           java-version: 17
@@ -68,7 +68,7 @@ jobs:
           cp feature/web/root-index.html pages/index.html
 
       - name: Commit gh pages for feature
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v11
         with:
           cwd: pages
           message: "Release for ${{ steps.extract_branch.outputs.branch }}"

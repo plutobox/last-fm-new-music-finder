@@ -28,11 +28,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       LAST_FM_RATE_LIMIT_FILE: rate-limit-hit # lets one step's rate-limit stop reach the later steps
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # built-in node:sqlite
 
@@ -100,11 +100,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # built-in node:sqlite
 
@@ -134,7 +134,7 @@ jobs:
 
       # Song and video IDs only. Nothing about any user.
       - name: Keep the results for the next job
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: youtube-results
           path: youtube-results.jsonl
@@ -149,11 +149,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # built-in node:sqlite
 
@@ -165,7 +165,7 @@ jobs:
         run: node feature/scripts/release-store.mjs download db
 
       - name: Get the YouTube results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: youtube-results
 
@@ -188,11 +188,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: feature
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # built-in node:sqlite
 
@@ -215,7 +215,7 @@ jobs:
           rm -f pages/data/songs.json
 
       - name: Commit the songs files to gh-pages
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v11
         with:
           cwd: pages
           add: "data"
