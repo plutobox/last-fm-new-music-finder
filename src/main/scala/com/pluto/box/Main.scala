@@ -212,8 +212,8 @@ private def finder(library: Library) =
       td(
         cls := "pos",
         div(position.toString),
-        s.youtubeId match
-          case Some(_) =>
+        child <-- player.unplayable.signal.map(_ => s.youtubeId.exists(player.unplayable.now())).distinct.map: known =>
+          if s.youtubeId.isDefined && !known then
             button(
               typ := "button",
               cls := "play",
@@ -221,14 +221,14 @@ private def finder(library: Library) =
               "▶︎",
               onClick --> (_ => player.play(s, results.filter(_.youtubeId.isDefined)))
             )
-          case None =>
+          else
             a(
               cls := "play play-away",
               href := s.youtubeSearchUrl,
               target := "_blank",
               rel := "noopener",
               aria.label := s"Search YouTube for ${s.title} by ${s.artist}, in a new tab",
-              title := "No video here yet. Search YouTube in a new tab.",
+              title := "No playable video here. Search YouTube in a new tab.",
               "↗︎"
             )
       ),

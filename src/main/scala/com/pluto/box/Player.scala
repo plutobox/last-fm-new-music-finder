@@ -4,6 +4,7 @@ import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 
 import scala.scalajs.js
+import scala.util.Try
 
 // The player bar along the bottom of the page, plus YouTube's own player above it.
 // YouTube requires its player to stay visible at 200x200 or larger, so "smaller" stops there and there's no audio-only mode.
@@ -19,6 +20,10 @@ final class Player:
   private val volume = Var(100)
   private val largeVideo = Var(true)
   private val problem = Var[Option[String]](None)
+  private val skipDelayMs = 2500
+
+  // Videos that failed to play, remembered in this browser so they aren't tried again.
+  val unplayable = Var(Player.loadUnplayable())
 
   def play(song: Song, upNext: Vector[Song]): Unit =
     queue.set(upNext)
@@ -34,10 +39,16 @@ final class Player:
         case Some(player) => player.loadVideoById(id)
         case None         => create(id)
 
-  // Moves through the results the song was started from, skipping any already gone.
+  // Moves through the results the song was started from, past any video known not to play.
   private def step(by: Int): Unit =
     val q = queue.now()
-    current.now().map(q.indexOf).filter(_ >= 0).map(_ + by).filter(q.indices.contains).map(q).foreach(start)
+    val bad = unplayable.now()
+    current.now().map(q.indexOf).filter(_ >= 0).foreach: i =>
+      Iterator.iterate(i + by)(_ + by)
+        .takeWhile(q.indices.contains)
+        .map(q)
+        .find(_.youtubeId.forall(id => !bad.contains(id)))
+        .foreach(start)
 
   private def create(id: String): Unit =
     Player.whenApiReady: () =>
@@ -62,11 +73,19 @@ final class Player:
 
   private def onError(code: Int): Unit =
     playing.set(false)
+    val failed = current.now()
     problem.set(Some(code match
-      case 101 | 150 => "This video's owner doesn't allow playing it here."
-      case 100       => "This video has been removed or made private."
-      case _         => "This video can't play here."
+      case 101 | 150 => "This video's owner doesn't allow playing it here. Skipping."
+      case 100       => "This video has been removed or made private. Skipping."
+      case _         => "This video can't play here. Skipping."
     ))
+    // These won't change on a retry. Other codes might be temporary, so they aren't remembered.
+    if code == 100 || code == 101 || code == 150 then
+      failed.flatMap(_.youtubeId).foreach: id =>
+        unplayable.update(_ + id)
+        Player.saveUnplayable(unplayable.now())
+    // Only if nothing else has been started in the meantime.
+    dom.window.setTimeout(() => if current.now() == failed && problem.now().isDefined then step(1), skipDelayMs)
 
   private def sample(): Unit =
     for player <- yt if playing.now() do
@@ -169,6 +188,17 @@ final class Player:
 
 object Player:
   private var waiting = Vector.empty[() => Unit]
+  private val unplayableKey = "song-finder-unplayable-videos"
+
+  // Storage can be blocked or empty, for example in a private window. The page works fine without it.
+  private def loadUnplayable(): Set[String] =
+    Try(js.JSON.parse(dom.window.localStorage.getItem(unplayableKey)).asInstanceOf[js.Array[String]].toSet)
+      .toOption
+      .filter(_ != null)
+      .getOrElse(Set.empty)
+
+  private def saveUnplayable(ids: Set[String]): Unit =
+    Try(dom.window.localStorage.setItem(unplayableKey, js.JSON.stringify(js.Array(ids.toSeq*))))
 
   // YouTube's script calls a global function when it's ready, and it's only ever loaded once.
   private def whenApiReady(run: () => Unit): Unit =
