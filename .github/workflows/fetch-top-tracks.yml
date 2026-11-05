@@ -12,7 +12,7 @@ on:
         default: "5000"
       minutes:
         description: "Stop fetching after this many minutes, keeping progress"
-        default: "30"
+        default: "25"
       users:
         description: "Comma-separated usernames to process first. They count toward max_users, and the rest are normal unprocessed users."
         required: false
@@ -64,7 +64,7 @@ jobs:
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
           # Scheduled runs have no inputs, so fall back to the defaults.
           MAX_USERS: ${{ inputs.max_users || '5000' }}
-          MINUTES: ${{ inputs.minutes || '30' }}
+          MINUTES: ${{ inputs.minutes || '25' }}
         run: |
           node feature/scripts/fetch-top-tracks.mjs \
             --db db/users.db.age \
@@ -77,7 +77,7 @@ jobs:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
         # The longer of the two: one artist's tags can put many songs on the site, a song's details at most one.
-        run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 15
+        run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 20
 
       - name: Fetch song details (album, tags, global counts)
         env:
