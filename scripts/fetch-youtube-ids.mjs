@@ -12,7 +12,7 @@
 // from an auto-generated "- Topic" channel or titled "Official Audio". Anything that fails gets one try with normal
 // YouTube search, under the same check. A song with no good result keeps any video it already has.
 //
-// Results end up in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs rewrites.
+// Results end up in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs fills.
 // A new result replaces an older one, and the public data prefers it to the MusicBrainz link.
 //
 // Stops, keeping its progress, after 3 challenged batches in a row ("Sign in to confirm you're not a bot"). It doesn't

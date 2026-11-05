@@ -1,7 +1,7 @@
 name: Import MusicBrainz data
 
-# Adds release years, YouTube IDs and Spotify IDs from MusicBrainz's database dump, with no API calls. The next
-# Fetch top songs run publishes them to songs.json.
+# Fills empty release years, YouTube IDs and Spotify IDs from MusicBrainz's database dump, with no API calls. Values
+# already saved are never changed. The next Fetch top songs run publishes them.
 on:
   schedule:
     - cron: "12 15 3 * *" # monthly, in the gap after the 13:47 fetch
@@ -62,7 +62,7 @@ jobs:
           du -sh dump
           df -h . | tail -1
 
-      - name: Import release years, YouTube IDs and Spotify IDs (decrypts, updates, re-encrypts)
+      - name: Fill empty release years, YouTube IDs and Spotify IDs (decrypts, updates, re-encrypts)
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           # Scheduled runs have no inputs, so they save. Manual runs only check, unless told otherwise.

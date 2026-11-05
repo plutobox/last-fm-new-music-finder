@@ -8,7 +8,8 @@
 // - the same title by the same artist, using the artist's MBID where we have it and the exact name otherwise
 // Its year is the earliest release of any linked recording, and its video and Spotify track are the
 // lowest-numbered links of each kind. Spotify album links are only counted: they don't identify the exact song.
-// Rerunning is safe: it's offline, and every value comes fresh from the dump.
+// It only fills fields that are empty: a value already saved is never changed or cleared, even if a newer dump differs.
+// Rerunning is safe: it's offline.
 //
 // --check reports coverage and sample songs without saving anything.
 //
@@ -230,10 +231,20 @@ for (const [artist, title, known] of knownYears) {
 if ("check" in args) {
   log("Check only, so nothing was saved");
 } else {
-  const save = db.prepare("UPDATE songs SET release_year = ?, youtube_id = ?, spotify_id = ? WHERE id = ?");
+  const save = db.prepare(`
+    UPDATE songs SET
+      release_year = COALESCE(release_year, ?),
+      youtube_id = COALESCE(youtube_id, ?),
+      spotify_id = COALESCE(spotify_id, ?)
+    WHERE id = ?
+  `);
+  const counts = db.prepare("SELECT count(release_year) AS years, count(youtube_id) AS videos, count(spotify_id) AS spotify FROM songs");
+  const before = counts.get();
   db.exec("BEGIN");
   for (const s of songs) save.run(yearBySong.get(s.id) ?? null, videoBySong.get(s.id)?.id ?? null, spotifyBySong.get(s.id)?.id ?? null, s.id);
   db.exec("COMMIT");
+  const after = counts.get();
+  log(`Filled empty fields: ${after.years - before.years} years, ${after.videos - before.videos} YouTube IDs, ${after.spotify - before.spotify} Spotify IDs`);
   log("Saving the database...");
   db.exec("VACUUM");
   db.close();
