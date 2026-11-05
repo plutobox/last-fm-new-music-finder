@@ -62,7 +62,7 @@ private def formatCount(n: Int): String =
       case Load.Failed(message) =>
         div(
           cls := "status",
-          h1("Song finder"),
+          h1("WTF are ppl listening to!?!?!"),
           p(s"Couldn't load the song list: $message."),
           button(cls := "action", "Try again", onClick --> (_ => fetchSongs()))
         )
@@ -72,7 +72,7 @@ private def formatCount(n: Int): String =
   renderOnDomContentLoaded(dom.document.getElementById("app"), app)
 
 private def statusPanel(message: String) =
-  div(cls := "status", h1("Song finder"), p(message))
+  div(cls := "status", h1("WTF are ppl listening to!?!?!"), p(message))
 
 private def finder(library: Library) =
   val player = new Player
@@ -298,7 +298,7 @@ private def finder(library: Library) =
   div(
     cls := "finder",
     headerTag(
-      h1("Song finder"),
+      h1("WTF are ppl listening to!?!?!"),
       p(
         cls := "intro",
         s"Search ${formatCount(library.songs.size)} songs by what Last.fm listeners play and love. Genres come from the song's own tags, or its artist's when it has none."
