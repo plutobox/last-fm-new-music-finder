@@ -46,7 +46,8 @@ const dbPath = args.db ?? "data/users.db";
 const resultsFile = args.results;
 if (!resultsFile) throw new Error("--results is required");
 const deadline = Date.now() + Number(args.minutes ?? 45) * 60_000;
-// 4 ran with no errors on GitHub's runners. 8 got 403s from YouTube within minutes, though it looked clean in a local test.
+// 8 got 403s from YouTube within minutes on GitHub's runners, though it looked clean in a local test. 4 showed no
+// challenges, but those runs predate the error logging, so check the "Errors this run" line before going higher.
 const WORKERS = Number(args.workers ?? 4);
 // Stays under the API's 10,000 units a day at 12 runs a day.
 const MAX_API_UNITS = Number(args["max-api-units"] ?? 800);
