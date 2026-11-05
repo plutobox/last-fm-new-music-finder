@@ -8,9 +8,17 @@
 // - If LAST_FM_RATE_LIMIT_FILE is set, stopping also creates that file, and a client that finds it sends nothing.
 //   That carries the stop across the steps of a workflow run.
 import fs from "node:fs";
+import { logError } from "./error-log.mjs";
 
 const PERMANENT_ERRORS = new Set([6, 17]); // not found / private: specific to this item, don't retry
 const FATAL_ERRORS = new Set([10, 26]); // bad or suspended API key: nothing else will work either
+// What the public log says about an error. Last.fm's own message could repeat a username, so it's never printed.
+const ERROR_NAMES = {
+  2: "invalid service", 3: "invalid method", 4: "authentication failed", 5: "invalid format", 6: "not found or invalid parameters",
+  7: "invalid resource", 8: "operation failed", 9: "invalid session", 10: "invalid API key", 11: "service offline",
+  13: "invalid signature", 16: "temporary error", 17: "private or login required", 26: "API key suspended", 29: "rate limited",
+};
+const errorName = (code) => `Last.fm error ${code} (${ERROR_NAMES[code] ?? "unknown"})`;
 const MAX_INTERVAL_MS = 5000;
 const MAX_RATE_LIMIT_HITS = 3;
 const RATE_LIMIT_PAUSE_MS = Number(process.env.LAST_FM_RATE_LIMIT_PAUSE_MS ?? 30_000);
@@ -52,11 +60,14 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
 
   // Returns data[key], or { error, kind: "permanent" | "fatal" | "transient" }.
   async function apiGet(params, key) {
+    // The log gets the method and a fixed description only, as params can hold a username.
+    const report = (what, detail = "") => logError(`${params.method}: ${what}`, detail);
     const url = new URL("https://ws.audioscrobbler.com/2.0/");
     url.search = new URLSearchParams({ ...params, api_key: apiKey, format: "json" });
     let last = "retries-exhausted";
     for (let attempt = 0; attempt < 4; attempt++) {
       if (stoppedBecause) return { error: stoppedBecause, kind: "fatal" };
+      if (attempt > 0) report(last, `will retry (attempt ${attempt})`);
       await waitForSlot();
       if (stoppedBecause) return { error: stoppedBecause, kind: "fatal" }; // may have happened during the wait
       stats.requests++;
@@ -65,7 +76,7 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
         res = await fetch(url, { headers: { "User-Agent": userAgent }, signal: AbortSignal.timeout(30_000) });
         data = await res.json().catch(() => ({}));
       } catch (e) {
-        last = `network: ${e.name}`; // e.message could include the URL, which holds the API key
+        last = `network: ${e.name}${e.cause?.code ? ` ${e.cause.code}` : ""}`; // e.message could include the URL, which holds the API key
         await sleep(2000 * (attempt + 1));
         continue;
       }
@@ -76,9 +87,9 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
       }
       if (data.error) {
         const message = `${data.error}: ${data.message ?? ""}`.trim();
-        if (PERMANENT_ERRORS.has(data.error)) return { error: message, kind: "permanent" };
-        if (FATAL_ERRORS.has(data.error)) return { error: message, kind: "fatal" };
-        last = `api error ${data.error}`;
+        if (PERMANENT_ERRORS.has(data.error)) { report(errorName(data.error)); return { error: message, kind: "permanent" }; }
+        if (FATAL_ERRORS.has(data.error)) { report(errorName(data.error)); return { error: message, kind: "fatal" }; }
+        last = errorName(data.error);
       } else if (res.ok && data[key]) {
         hits = 0;
         intervalMs = Math.max(minIntervalMs, intervalMs * 0.99);
@@ -88,6 +99,7 @@ export function createClient({ apiKey, userAgent, maxPerSecond = 4 }) {
       }
       await sleep(2000 * (attempt + 1)); // temporary errors (8, 11, 16) or server trouble
     }
+    report(last, "gave up after 4 tries");
     return { error: last, kind: "transient" };
   }
 

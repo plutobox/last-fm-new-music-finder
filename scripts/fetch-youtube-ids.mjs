@@ -19,7 +19,7 @@
 // try to get past those, and it only warns, so the rest of the workflow still runs. Songs in a failed or challenged
 // search aren't marked, so a later run retries them.
 //
-// Needs YOUTUBE_API_KEY. A ".age" --db also needs LAST_FM_AGE_IDENTITY. Logs print counts only.
+// Needs YOUTUBE_API_KEY. A ".age" --db also needs LAST_FM_AGE_IDENTITY. Logs print counts and errors, with no key.
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -27,6 +27,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { DatabaseSync } from "node:sqlite";
 import { encryptedDbExists, readEncryptedDb } from "./db-store.mjs";
+import { logError, scrub } from "./error-log.mjs";
 import { startProgress } from "./progress.mjs";
 
 const run = promisify(execFile);
@@ -99,6 +100,11 @@ async function search(songs, { urlFor, queryFromTitle, extra }) {
     const [title, id] = line.split("\t");
     if (title && id) results.set(queryFromTitle(title), id);
   }
+  // yt-dlp never gets a key, and these lines can only name public songs. Scrubbed anyway, as this log is public.
+  for (const line of stderr.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const shown = scrub(line, [apiKey, ageIdentity]).slice(0, 300);
+    logError(CHALLENGE.test(line) ? "yt-dlp challenge" : "yt-dlp", shown);
+  }
   const challenged = CHALLENGE.test(stderr);
   if (challenged) {
     challengedBatches++;
@@ -132,10 +138,12 @@ async function lookUpVideos(ids) {
     try {
       data = await (await fetch(url, { signal: AbortSignal.timeout(30_000) })).json();
     } catch (e) {
-      stop(`YouTube API request failed (${e.name})`); // e.message could include the URL, which holds the key
+      logError("YouTube API", e.name); // e.message could include the URL, which holds the key
+      stop(`YouTube API request failed (${e.name})`);
       return null;
     }
     if (data.error) {
+      logError("YouTube API", `${data.error.code} ${data.error.errors?.[0]?.reason ?? ""}`.trim());
       stop(`YouTube API refused: ${data.error.errors?.[0]?.reason ?? data.error.code}`);
       return null;
     }
