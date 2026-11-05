@@ -2,7 +2,7 @@ name: Fetch top songs
 
 on:
   schedule:
-    # Every 2 hours, on odd hours. A run takes up to about 80 minutes, which leaves a gap for the crawl and import.
+    # Every 2 hours, on odd hours. A run takes up to about 95 minutes, which leaves a gap for the crawl and import.
     - cron: "47 1-23/2 * * *"
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 90 # 60 of fetching, plus moving a database that can reach hundreds of MB
+    timeout-minutes: 110 # 75 of fetching, plus moving a database that can reach hundreds of MB
     env:
       GH_TOKEN: ${{ github.token }}
       LAST_FM_RATE_LIMIT_FILE: rate-limit-hit # lets one step's rate-limit stop reach the later steps
@@ -71,6 +71,23 @@ jobs:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
         run: node feature/scripts/fetch-track-info.mjs --db db/users.db.age --minutes 15
+
+      - name: Install yt-dlp, checking its published checksum
+        shell: bash
+        run: |
+          version=2026.10.26
+          base="https://github.com/yt-dlp/yt-dlp/releases/download/$version"
+          curl -fsSL -o yt-dlp_linux "$base/yt-dlp_linux"
+          curl -fsSL -o SHA2-256SUMS "$base/SHA2-256SUMS"
+          grep -E ' yt-dlp_linux$' SHA2-256SUMS | sha256sum -c -
+          chmod +x yt-dlp_linux
+
+      # Metadata only. No video or audio is downloaded, and no cookies or sign-in are used.
+      - name: Find YouTube videos for songs with no MusicBrainz link
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+        run: node feature/scripts/fetch-youtube-ids.mjs --db db/users.db.age --minutes 15 --yt-dlp ./yt-dlp_linux
 
       - name: Upload the database to the release
         run: node feature/scripts/release-store.mjs upload db
