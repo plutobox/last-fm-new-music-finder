@@ -60,6 +60,9 @@ final case class Query(
   limit: Int = 10
 )
 
+// data/songs/manifest.json, which lists the split files that make up the song table.
+final case class Manifest(builtAt: String, version: String, columns: js.Array[String], parts: Vector[String])
+
 final case class Library(songs: Vector[Song], builtAt: String):
   val maxListeners: Int = songs.iterator.map(_.listeners).maxOption.getOrElse(1)
   // Every genre with its song count, biggest first.
@@ -71,21 +74,38 @@ final case class Result(matched: Int, songs: Vector[Song])
 object Songs:
   private def number(s: String): Option[Int] = s.trim.toIntOption
 
-  // Reads the columns by name, so adding a column to songs.json can't shift these.
+  def parseManifest(text: String): Manifest =
+    val root = js.JSON.parse(text)
+    Manifest(
+      builtAt = root.built_at.asInstanceOf[String],
+      version = root.version.asInstanceOf[String],
+      columns = root.columns.asInstanceOf[js.Array[String]],
+      parts = root.parts.asInstanceOf[js.Array[js.Dynamic]].toVector.map(_.name.asInstanceOf[String])
+    )
+
+  // Joins the split files, in the order the manifest lists them.
+  def join(manifest: Manifest, parts: Vector[String]): Library =
+    val rows = parts.iterator.flatMap(text => js.JSON.parse(text).rows.asInstanceOf[js.Array[js.Array[js.Any]]].iterator)
+    Library(readRows(manifest.columns, rows), manifest.builtAt)
+
+  // The older single-file form.
   def parse(text: String): Library =
     val root = js.JSON.parse(text)
-    val columns = root.columns.asInstanceOf[js.Array[String]]
+    val rows = root.rows.asInstanceOf[js.Array[js.Array[js.Any]]]
+    Library(readRows(root.columns.asInstanceOf[js.Array[String]], rows.iterator), root.built_at.asInstanceOf[String])
+
+  // Reads the columns by name, so adding a column can't shift these.
+  private def readRows(columns: js.Array[String], rows: Iterator[js.Array[js.Any]]): Vector[Song] =
     def column(name: String): Int =
       val i = columns.indexOf(name)
-      if i < 0 then throw new Exception(s"songs.json has no \"$name\" column")
+      if i < 0 then throw new Exception(s"the song data has no \"$name\" column")
       i
     val (artist, title, genres) = (column("artist"), column("song"), column("genres"))
     val (listeners, plays, loved) = (column("listeners"), column("plays"), column("loved_by"))
     // Optional: older copies of the file don't have these.
     val year = columns.indexOf("year")
     val youtubeId = columns.indexOf("youtube_id")
-    val rows = root.rows.asInstanceOf[js.Array[js.Array[js.Any]]]
-    val songs = rows.iterator.map: r =>
+    val songs = rows.map: r =>
       Song(
         artist = r(artist).asInstanceOf[String],
         title = r(title).asInstanceOf[String],
@@ -96,7 +116,7 @@ object Songs:
         year = if year < 0 || r(year) == null then None else Some(r(year).asInstanceOf[Int]),
         youtubeId = if youtubeId < 0 || r(youtubeId) == null then None else Some(r(youtubeId).asInstanceOf[String])
       )
-    Library(songs.toVector, root.built_at.asInstanceOf[String])
+    songs.toVector
 
   def run(library: Library, q: Query, shuffleSeed: Int): Result =
     val artist = q.artist.trim.toLowerCase

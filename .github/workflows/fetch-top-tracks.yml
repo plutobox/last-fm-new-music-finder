@@ -2,7 +2,7 @@ name: Fetch top songs
 
 on:
   schedule:
-    # Every 2 hours, on odd hours. A run takes up to about 95 minutes, which leaves a gap for the crawl and import.
+    # Every 2 hours, on odd hours. A run takes up to about 80 minutes, which leaves a gap for the crawl and import.
     - cron: "47 1-23/2 * * *"
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 110 # 75 of fetching, plus moving a database that can reach hundreds of MB
+    timeout-minutes: 90 # 60 of fetching, plus moving a database that can reach hundreds of MB
     env:
       GH_TOKEN: ${{ github.token }}
       LAST_FM_RATE_LIMIT_FILE: rate-limit-hit # lets one step's rate-limit stop reach the later steps
@@ -73,6 +73,40 @@ jobs:
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
         run: node feature/scripts/fetch-track-info.mjs --db db/users.db.age --minutes 5
 
+      - name: Upload the database to the release
+        run: node feature/scripts/release-store.mjs upload db
+
+      # After the upload, so progress is kept. A red run makes a rate-limit stop hard to miss.
+      - name: Fail the run if Last.fm rate limited us
+        run: |
+          if [ -f rate-limit-hit ]; then
+            echo "::error::Last.fm rate limited this run, so it stopped sending requests. Check before running again."
+            exit 1
+          fi
+
+  # Runs alongside the fetch job, since YouTube and Last.fm don't share a rate limit. It only reads a copy of the
+  # database, so the two can't conflict. The apply-youtube job below saves what it finds.
+  youtube:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
       - name: Install yt-dlp, checking its published checksum
         shell: bash
         run: |
@@ -88,21 +122,56 @@ jobs:
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
-        run: node feature/scripts/fetch-youtube-ids.mjs --db db/users.db.age --minutes 15 --yt-dlp ./yt-dlp_linux
+        run: node feature/scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl --minutes 45 --yt-dlp ./yt-dlp_linux
+
+      # Song and video IDs only. Nothing about any user.
+      - name: Keep the results for the next job
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-results
+          path: youtube-results.jsonl
+          retention-days: 1
+
+  # Saved after both finish, so only one job at a time ever writes the database.
+  apply-youtube:
+    needs: [fetch, youtube]
+    if: ${{ !cancelled() && needs.youtube.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: feature
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # built-in node:sqlite
+
+      - name: Install script dependencies
+        working-directory: feature/scripts
+        run: npm ci
+
+      - name: Download the database from the release
+        run: node feature/scripts/release-store.mjs download db
+
+      - name: Get the YouTube results
+        uses: actions/download-artifact@v4
+        with:
+          name: youtube-results
+
+      - name: Save the YouTube results to the database
+        env:
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+        run: node feature/scripts/apply-youtube-ids.mjs --results youtube-results.jsonl --db db/users.db.age
 
       - name: Upload the database to the release
         run: node feature/scripts/release-store.mjs upload db
 
-      # After the upload, so progress is kept. A red run makes a rate-limit stop hard to miss.
-      - name: Fail the run if Last.fm rate limited us
-        run: |
-          if [ -f rate-limit-hit ]; then
-            echo "::error::Last.fm rate limited this run, so it stopped sending requests. Check before running again."
-            exit 1
-          fi
-
   publish-songs:
-    needs: fetch
+    needs: [fetch, apply-youtube]
+    if: ${{ !cancelled() && (needs.fetch.result == 'success' || needs.apply-youtube.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
@@ -129,15 +198,18 @@ jobs:
       - name: Download the database from the release
         run: node feature/scripts/release-store.mjs download db
 
-      - name: Build the public songs file (no usernames or per-user data)
+      - name: Build the public songs files (no usernames or per-user data)
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
-        run: node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json --max-mb 50
+        run: |
+          node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs --part-mb 10
+          # Replaced by the split files above.
+          rm -f pages/data/songs.json
 
-      - name: Commit songs.json to gh-pages
+      - name: Commit the songs files to gh-pages
         uses: EndBug/add-and-commit@v9
         with:
           cwd: pages
-          add: "data/songs.json"
-          message: "Update public songs file"
+          add: "data"
+          message: "Update public songs files"
           push: origin gh-pages --set-upstream

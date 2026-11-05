@@ -1,10 +1,11 @@
-// Builds the one public, unencrypted file: a flat table of songs with their genres and aggregate counts.
+// Builds the public, unencrypted data: one flat table of songs with their genres and aggregate counts, split into
+// numbered files in one folder, plus a manifest.json that lists them. The website loads the files and joins them.
 // Only reads the database, which it opens read-only. No usernames, profiles or per-user data go in.
-// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs.json [--max-mb 50]
+// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs [--part-mb 10]
 //
-// Songs need at least MIN_LISTENERS listeners, so a row can't simply be one person's listening. If the table
-// passes --max-mb, the least popular rows are dropped. An unchanged table leaves the file untouched, so the
-// workflow has nothing to commit.
+// Songs need at least MIN_LISTENERS listeners, so a row can't simply be one person's listening. An unchanged table
+// leaves the files untouched, so the workflow has nothing to commit.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,8 +46,8 @@ const GENRES = Object.fromEntries(Object.entries({
 }).flatMap(([genre, tags]) => tags.map((t) => [t, genre])));
 
 const dbPath = args.db ?? "data/users.db";
-const out = args.out ?? "data/songs.json";
-const maxBytes = Number(args["max-mb"] ?? 50) * 1024 * 1024;
+const out = args.out ?? "data/songs";
+const partBytes = Number(args["part-mb"] ?? 10) * 1024 * 1024;
 const encrypted = dbPath.endsWith(".age");
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");
@@ -111,34 +112,49 @@ const candidates = db.prepare(`
 db.close();
 fs.rmSync(workDir, { recursive: true, force: true });
 
-const wrapperBytes = 200;
-const rows = [];
-let bytes = wrapperBytes, untagged = 0, droppedForSize = 0, fromSong = 0, fromArtist = 0;
+const lines = [];
+let untagged = 0, fromSong = 0, fromArtist = 0;
 for (const c of candidates) {
   // A song's own tags win. Without any usable ones, it takes its artist's.
   const own = songGenres.get(c.song_id);
   const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
-  const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id];
-  const size = Buffer.byteLength(JSON.stringify(row)) + 2;
-  if (bytes + size > maxBytes) { droppedForSize++; continue; }
-  bytes += size;
-  rows.push(row);
+  lines.push(JSON.stringify([c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id]));
   if (own) fromSong++; else fromArtist++;
 }
 
-const previous = fs.existsSync(out) ? JSON.parse(fs.readFileSync(out, "utf8")) : null;
-const changed = JSON.stringify(previous?.rows) !== JSON.stringify(rows);
+const hash = crypto.createHash("sha256");
+for (const line of lines) hash.update(line).update("\n");
+const version = hash.digest("hex").slice(0, 16);
+
+const manifestPath = path.join(out, "manifest.json");
+const previous = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
+const changed = previous?.version !== version;
 if (changed) {
-  const lines = rows.map((r) => JSON.stringify(r)).join(",\n");
-  const text = `{"built_at":${JSON.stringify(new Date().toISOString())},"columns":${JSON.stringify(COLUMNS)},"rows":[\n${lines}\n]}\n`;
-  if (Buffer.byteLength(text) > maxBytes) throw new Error(`${out} would pass the size limit`);
-  fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, text);
+  const parts = [];
+  const writePart = (partLines) => {
+    const name = `part-${String(parts.length).padStart(3, "0")}.json`;
+    const text = `{"rows":[\n${partLines.join(",\n")}\n]}\n`;
+    fs.writeFileSync(path.join(out, name), text);
+    parts.push({ name, songs: partLines.length, bytes: Buffer.byteLength(text) });
+  };
+  fs.mkdirSync(out, { recursive: true });
+  for (const f of fs.readdirSync(out)) if (/^part-\d+\.json$/.test(f)) fs.rmSync(path.join(out, f));
+  let current = [], size = 0;
+  for (const line of lines) {
+    const lineBytes = Buffer.byteLength(line) + 2;
+    if (current.length && size + lineBytes > partBytes) { writePart(current); current = []; size = 0; }
+    current.push(line);
+    size += lineBytes;
+  }
+  if (current.length) writePart(current);
+  // Written last, so a stopped run can't leave a manifest pointing at files that aren't there yet.
+  fs.writeFileSync(manifestPath, `${JSON.stringify({ built_at: new Date().toISOString(), version, columns: COLUMNS, count: lines.length, parts }, null, 1)}\n`);
 }
 
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const totalBytes = manifest.parts.reduce((sum, p) => sum + p.bytes, 0);
 console.log(
-  `${changed ? "Wrote" : "No change to"} ${out}: ${rows.length} songs, ${(fs.statSync(out).size / 1048576).toFixed(2)} MB. ` +
-  `Genres from the song ${fromSong}, from the artist ${fromArtist}. ` +
-  `Left out: ${untagged} with no known genre yet, ${droppedForSize} over the size limit.`
+  `${changed ? "Wrote" : "No change to"} ${out}: ${manifest.count} songs in ${manifest.parts.length} file(s), ${(totalBytes / 1048576).toFixed(2)} MB. ` +
+  `Genres from the song ${fromSong}, from the artist ${fromArtist}. Left out: ${untagged} with no known genre yet.`
 );

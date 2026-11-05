@@ -3,43 +3,62 @@ package com.pluto.box
 import com.raquo.laminar.api.L.*
 import org.scalajs.dom
 
+import scala.concurrent.Future
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
 import scala.scalajs.js
 import scala.scalajs.js.Thenable.Implicits.*
 import scala.util.{Failure, Success}
 
 enum Load:
-  case Loading
+  case Loading(filesDone: Int, filesTotal: Int)
   case Failed(message: String)
   case Ready(library: Library)
 
-// The file sits at the site root, and each branch's build is in its own folder, however deep.
-private def songsUrl: String =
+// The data sits at the site root, and each branch's build is in its own folder, however deep.
+private val dataRoot: String =
   dom.window.location.pathname.split("/").filter(_.nonEmpty).headOption match
-    case Some(site) => s"/$site/data/songs.json"
-    case None       => "data/songs.json"
+    case Some(site) => s"/$site/data"
+    case None       => "data"
+
+private def fetchText(url: String): Future[String] =
+  dom.fetch(url).toFuture.flatMap: response =>
+    if response.ok then response.text().toFuture
+    else throw new Exception(s"the server answered ${response.status}")
 
 private def formatCount(n: Int): String =
   n.toString.reverse.grouped(3).mkString(",").reverse
 
 @main def main(): Unit =
-  val load = Var[Load](Load.Loading)
+  val load = Var[Load](Load.Loading(0, 0))
 
+  // The manifest is fetched fresh each time. Its version keeps a browser from mixing cached files from different builds.
   def fetchSongs(): Unit =
-    load.set(Load.Loading)
-    val text = dom.fetch(songsUrl).toFuture.flatMap: response =>
-      if response.ok then response.text().toFuture
-      else throw new Exception(s"the server answered ${response.status}")
-    text.map(Songs.parse).onComplete:
-      case Success(library) => load.set(Load.Ready(library))
-      case Failure(e)       => load.set(Load.Failed(e.getMessage))
+    load.set(Load.Loading(0, 0))
+    fetchText(s"$dataRoot/songs/manifest.json?t=${js.Date.now().toLong}")
+      .flatMap: text =>
+        val manifest = Songs.parseManifest(text)
+        var finished = 0
+        load.set(Load.Loading(0, manifest.parts.size))
+        Future
+          .traverse(manifest.parts): name =>
+            fetchText(s"$dataRoot/songs/$name?v=${manifest.version}").map: part =>
+              finished += 1
+              load.set(Load.Loading(finished, manifest.parts.size))
+              part
+          .map(parts => Songs.join(manifest, parts))
+      // Until the first split files are published, the data is still one file.
+      .recoverWith(_ => fetchText(s"$dataRoot/songs.json").map(Songs.parse))
+      .onComplete:
+        case Success(library) => load.set(Load.Ready(library))
+        case Failure(e)       => load.set(Load.Failed(e.getMessage))
 
   fetchSongs()
 
   val app = div(
     cls := "page",
     child <-- load.signal.map:
-      case Load.Loading => statusPanel("Loading songs...")
+      case Load.Loading(_, 0)         => statusPanel("Loading songs...")
+      case Load.Loading(done, total) => statusPanel(s"Loading songs: $done of $total files...")
       case Load.Failed(message) =>
         div(
           cls := "status",

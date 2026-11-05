@@ -1,14 +1,17 @@
 // Finds YouTube videos for songs with no MusicBrainz link, using yt-dlp for metadata only: no video or audio is
 // downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, most-listened first, each searched once.
-// Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age [--minutes 15] [--workers 4] [--batch 25]
-//                                           [--max-songs 20000] [--yt-dlp yt-dlp]
+// Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
+//                                           [--workers 4] [--batch 25] [--max-songs 20000] [--yt-dlp yt-dlp]
+//
+// It only reads the database, so it can run alongside the Last.fm job. Results go to the --results file, and
+// apply-youtube-ids.mjs saves them once that job has finished. Each line holds a song's database ID and its video ID.
 //
 // YouTube Music's song search goes first. Every result is then checked with the YouTube Data API (videos.list, about
 // 1 quota unit per 50 videos): it must be public, embeddable, and name the song and artist. Anything that fails gets
 // one try with normal YouTube search, under the same check. A song with no good video stays empty: that's better
 // than playing the wrong thing.
 //
-// Results go in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs rewrites.
+// Results end up in songs.youtube_search_id, separate from songs.youtube_id, which import-musicbrainz.mjs rewrites.
 //
 // Stops, keeping its progress, after 3 challenged batches in a row ("Sign in to confirm you're not a bot"). It doesn't
 // try to get past those, and it only warns, so the rest of the workflow still runs. Songs in a failed or challenged
@@ -21,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { DatabaseSync } from "node:sqlite";
-import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
+import { encryptedDbExists, readEncryptedDb } from "./db-store.mjs";
 import { startProgress } from "./progress.mjs";
 
 const run = promisify(execFile);
@@ -36,7 +39,9 @@ const apiKey = process.env.YOUTUBE_API_KEY;
 if (!apiKey) throw new Error("YOUTUBE_API_KEY is not set");
 
 const dbPath = args.db ?? "data/users.db";
-const deadline = Date.now() + Number(args.minutes ?? 15) * 60_000;
+const resultsFile = args.results;
+if (!resultsFile) throw new Error("--results is required");
+const deadline = Date.now() + Number(args.minutes ?? 45) * 60_000;
 const WORKERS = Number(args.workers ?? 4);
 const BATCH = Number(args.batch ?? 25);
 const MAX_SONGS = Number(args["max-songs"] ?? 20000);
@@ -139,6 +144,7 @@ if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdenti
 const db = new DatabaseSync(localDb);
 db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 
+// Changes this private temp copy only, which is deleted below. The real database gets these from apply-youtube-ids.mjs.
 const columns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
 for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_search_source TEXT", "youtube_searched_at TEXT"]) {
   if (!columns.includes(column.split(" ")[0])) db.exec(`ALTER TABLE songs ADD COLUMN ${column}`);
@@ -161,10 +167,17 @@ const queue = db.prepare(`
   ORDER BY e.listeners DESC, s.id
   LIMIT ?
 `).all(MAX_SONGS);
-const countLeft = db.prepare(`SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE ${WAITING}`);
-console.log(`Queued ${queue.length} songs, out of ${countLeft.get().n} with 2+ listeners and no video`);
+const waitingAtStart = db.prepare(`SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE ${WAITING}`).get().n;
+console.log(`Queued ${queue.length} songs, out of ${waitingAtStart} with 2+ listeners and no video`);
+db.close();
+fs.rmSync(workDir, { recursive: true, force: true });
 
-const save = db.prepare("UPDATE songs SET youtube_search_id = ?, youtube_search_source = ?, youtube_searched_at = ? WHERE id = ?");
+fs.mkdirSync(path.dirname(path.resolve(resultsFile)), { recursive: true });
+fs.writeFileSync(resultsFile, "");
+// Written as it goes, so results survive if the job is stopped partway.
+const save = (videoId, source, songId) => {
+  fs.appendFileSync(resultsFile, `${JSON.stringify({ song: songId, video: videoId, source, at: new Date().toISOString() })}\n`);
+};
 
 // ---- Run -------------------------------------------------------------------------------------
 
@@ -173,20 +186,17 @@ let done = 0, fromMusic = 0, fromSearch = 0, noMatch = 0, retryLater = 0, next =
 // Saves the songs with a good video among these results, and returns the rest.
 function keepGood(songs, found, videos, source) {
   const rest = [];
-  const at = new Date().toISOString();
-  db.exec("BEGIN");
   for (const song of songs) {
     const id = found.get(song.query);
     const video = id && videos.get(id);
     if (video && isGoodVideo(song, video)) {
-      save.run(id, source, at, song.id);
+      save(id, source, song.id);
       done++;
       if (source === "music") fromMusic++; else fromSearch++;
     } else {
       rest.push(song);
     }
   }
-  db.exec("COMMIT");
   return rest;
 }
 
@@ -206,10 +216,7 @@ async function processBatch(songs) {
 
   // Only a song that both searches really looked at is finished. The rest get another try on a later run.
   if (music.ok && normal.ok) {
-    const at = new Date().toISOString();
-    db.exec("BEGIN");
-    for (const song of afterNormal) { save.run(null, null, at, song.id); noMatch++; done++; }
-    db.exec("COMMIT");
+    for (const song of afterNormal) { save(null, null, song.id); noMatch++; done++; }
   } else {
     retryLater += afterNormal.length;
   }
@@ -237,16 +244,9 @@ await Promise.all(Array.from({ length: WORKERS }, async () => {
 }));
 progress.stop();
 
-const left = countLeft.get().n;
-console.log("Saving the database...");
-db.exec("VACUUM");
-db.close();
-if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
-fs.rmSync(workDir, { recursive: true, force: true });
-
 console.log(
   `YouTube search: ${fromMusic} from YouTube Music, ${fromSearch} from normal search, ${noMatch} no good match, ` +
-  `${retryLater} to retry, ${left} left. ${searches} searches, ${challengedBatches} challenged batches, ${apiUnits} API units. ` +
+  `${retryLater} to retry, ${waitingAtStart - done} left. ${searches} searches, ${challengedBatches} challenged batches, ${apiUnits} API units. ` +
   `Stopped: ${stopReason ?? (Date.now() >= deadline ? "time limit" : "queue finished")}`
 );
 if (stopReason) console.log(`::warning::YouTube search stopped early: ${stopReason}`);
