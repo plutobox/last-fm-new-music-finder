@@ -63,14 +63,15 @@ jobs:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
-        run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 5
+        # The longer of the two: one artist's tags can put many songs on the site, a song's details at most one.
+        run: node feature/scripts/fetch-artist-tags.mjs --db db/users.db.age --minutes 15
 
       - name: Fetch song details (album, tags, global counts)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
-        run: node feature/scripts/fetch-track-info.mjs --db db/users.db.age --minutes 15
+        run: node feature/scripts/fetch-track-info.mjs --db db/users.db.age --minutes 5
 
       - name: Install yt-dlp, checking its published checksum
         shell: bash
