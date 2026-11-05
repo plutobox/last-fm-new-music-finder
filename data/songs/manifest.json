@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-05T06:53:36.881Z",
- "version": "671c2f27c80bb48b",
+ "built_at": "2026-11-05T07:55:20.129Z",
+ "version": "fd994da93ac2788a",
  "columns": [
   "artist",
   "song",
@@ -12,37 +12,42 @@
   "youtube_id",
   "spotify_id"
  ],
- "count": 703706,
+ "count": 748910,
  "parts": [
   {
    "name": "part-000.json",
-   "songs": 118679,
-   "bytes": 10485756
+   "songs": 118447,
+   "bytes": 10485766
   },
   {
    "name": "part-001.json",
-   "songs": 126276,
-   "bytes": 10485736
+   "songs": 126379,
+   "bytes": 10485746
   },
   {
    "name": "part-002.json",
-   "songs": 126685,
-   "bytes": 10485750
+   "songs": 126979,
+   "bytes": 10485737
   },
   {
    "name": "part-003.json",
-   "songs": 125630,
-   "bytes": 10485767
+   "songs": 126410,
+   "bytes": 10485747
   },
   {
    "name": "part-004.json",
-   "songs": 123882,
-   "bytes": 10485728
+   "songs": 124955,
+   "bytes": 10485692
   },
   {
    "name": "part-005.json",
-   "songs": 82554,
-   "bytes": 7049786
+   "songs": 123684,
+   "bytes": 10485767
+  },
+  {
+   "name": "part-006.json",
+   "songs": 2056,
+   "bytes": 147829
   }
  ]
 }
