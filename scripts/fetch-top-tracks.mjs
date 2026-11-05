@@ -8,7 +8,8 @@
 //
 // Requests run in parallel, sharing one speed limit that slows down if Last.fm reports rate limiting.
 //
-// Order: LAST_FM_USERNAME first (similarity is measured against that user), then most listens per day (from
+// Order: LAST_FM_USERNAME first (similarity is measured against that user), then users named for this run (the
+// workflow's "users" input, or --users; they count toward --max-users), then most listens per day (from
 // fetch-user-info.mjs), then most friends, then random. Likely bots and users with no listens go last (user-activity.mjs).
 // Each user is pulled once, ever: songs_fetched_at and loved_fetched_at are tracked separately, and whichever
 // is already set is never requested again.
@@ -48,6 +49,9 @@ const maxUsers = Number(args["max-users"] ?? 5000);
 const deadline = Date.now() + Number(args.minutes ?? 40) * 60_000;
 const partMb = Number(args["part-mb"] ?? DEFAULT_PART_MB);
 const me = process.env.LAST_FM_USERNAME?.trim();
+// Read from the event file, because a step's env is printed in its public log. --users is for running locally.
+const event = process.env.GITHUB_EVENT_PATH ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, "utf8")) : null;
+const namedUsers = String(event?.inputs?.users ?? args.users ?? "").split(",").map((name) => name.trim()).filter(Boolean);
 const userAgent = process.env.LAST_FM_APPLICATION_NAME ?? "last-fm-new-music-finder";
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 const encrypted = dbPath.endsWith(".age");
@@ -415,15 +419,21 @@ if (me) {
 }
 
 addProfileColumns(db);
+// Added if we haven't crawled them yet. A named user who's already been fetched isn't requested again.
+const insertNamed = db.prepare("INSERT INTO users (name, depth, discovered_at) VALUES (?, 0, ?) ON CONFLICT (name) DO NOTHING");
+for (const name of namedUsers) insertNamed.run(name, startedAt);
+
 const queue = db.prepare(`
   WITH ${FRIEND_COUNTS}
   SELECT u.id, u.name, u.songs_fetched_at, u.loved_fetched_at
   FROM users u LEFT JOIN friend_counts f ON f.name = u.name COLLATE NOCASE
   WHERE u.songs_fetched_at IS NULL OR u.loved_fetched_at IS NULL
-  ORDER BY u.name = ? COLLATE NOCASE DESC, ${ACTIVITY_ORDER}
+  ORDER BY u.name = ? COLLATE NOCASE DESC,
+           u.name COLLATE NOCASE IN (SELECT value FROM json_each(?)) DESC,
+           ${ACTIVITY_ORDER}
   LIMIT ?
-`).all(me ?? "", maxUsers);
-console.log(`Queued ${queue.length} users`);
+`).all(me ?? "", JSON.stringify(namedUsers), maxUsers);
+console.log(`Queued ${queue.length} users (${namedUsers.length} named for this run)`);
 
 let fetched = 0, lovedFetched = 0, errored = 0, consecutiveFailures = 0, stopReason = "queue finished";
 

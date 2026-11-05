@@ -11,7 +11,11 @@ on:
         default: "5000"
       minutes:
         description: "Stop fetching after this many minutes, keeping progress"
-        default: "40"
+        default: "30"
+      users:
+        description: "Comma-separated usernames to process first. They count toward max_users, and the rest are normal unprocessed users."
+        required: false
+        default: ""
 
 permissions:
   contents: write
