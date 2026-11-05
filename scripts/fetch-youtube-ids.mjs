@@ -2,7 +2,7 @@
 // metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, unless
 // already found through YouTube Music, each searched once, in order of most loved, then most listeners, then most plays.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
-//                                           [--workers 8] [--batch 25] [--max-songs 20000] [--max-api-units 800] [--yt-dlp yt-dlp]
+//                                           [--workers 4] [--batch 25] [--max-songs 20000] [--max-api-units 800] [--yt-dlp yt-dlp]
 //
 // It only reads the database, so it can run alongside the Last.fm job. Results go to the --results file, and
 // apply-youtube-ids.mjs saves them once that job has finished. Each line holds a song's database ID and its video ID.
@@ -46,8 +46,8 @@ const dbPath = args.db ?? "data/users.db";
 const resultsFile = args.results;
 if (!resultsFile) throw new Error("--results is required");
 const deadline = Date.now() + Number(args.minutes ?? 45) * 60_000;
-// In a local test, 8 scaled cleanly. Errors began at 16, and at 32 a fifth of searches failed.
-const WORKERS = Number(args.workers ?? 8);
+// 4 ran with no errors on GitHub's runners. 8 got 403s from YouTube within minutes, though it looked clean in a local test.
+const WORKERS = Number(args.workers ?? 4);
 // Stays under the API's 10,000 units a day at 12 runs a day.
 const MAX_API_UNITS = Number(args["max-api-units"] ?? 800);
 const BATCH = Number(args.batch ?? 25);
