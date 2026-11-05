@@ -1,5 +1,5 @@
 // Fetches each artist's top tags via artist.getTopTags, for the genre column in the public songs file.
-// One request per artist, once ever, most-listened artists first. Only adds to its own tables: tags,
+// One request per artist, once ever, skipping artists whose songs all have one listener. Only adds to its own tables: tags,
 // artist_tags and artist_tag_fetches. It never changes any existing table.
 // Usage: node scripts/fetch-artist-tags.mjs --db db/users.db.age [--max-artists 5000] [--minutes 10]
 //                                           [--concurrency 3] [--max-per-second 4]
@@ -74,23 +74,33 @@ const q = {
   markFetched: db.prepare("INSERT INTO artist_tag_fetches (artist_id, fetched_at, error) VALUES (?, ?, ?)"),
 };
 
-// Most-listened first, so the songs people actually play get genres soonest.
+// Only artists with a song that has at least 2 listeners, the same rule as the public file. Most listeners first,
+// so the songs people actually play get genres soonest.
+db.exec(`
+  CREATE TEMP TABLE eligible AS
+  SELECT s.artist_id, sum(l.listeners) AS listeners
+  FROM (
+    SELECT song_id, count(*) AS listeners
+    FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
+    GROUP BY song_id
+    HAVING listeners >= 2
+  ) l
+  JOIN songs s ON s.id = l.song_id
+  GROUP BY s.artist_id
+`);
 const queue = db.prepare(`
   SELECT a.id, a.name
-  FROM artists a
+  FROM eligible e
+  JOIN artists a ON a.id = e.artist_id
   LEFT JOIN artist_tag_fetches f ON f.artist_id = a.id
-  LEFT JOIN (
-    SELECT s.artist_id, count(*) AS n
-    FROM (SELECT song_id FROM user_songs UNION ALL SELECT song_id FROM user_loved_songs) x
-    JOIN songs s ON s.id = x.song_id
-    GROUP BY s.artist_id
-  ) p ON p.artist_id = a.id
   WHERE f.artist_id IS NULL
-  ORDER BY coalesce(p.n, 0) DESC, a.id
+  ORDER BY e.listeners DESC, a.id
   LIMIT ?
 `).all(maxArtists);
-const remainingAtStart = db.prepare("SELECT count(*) AS n FROM artists a LEFT JOIN artist_tag_fetches f ON f.artist_id = a.id WHERE f.artist_id IS NULL").get().n;
-console.log(`Queued ${queue.length} artists, out of ${remainingAtStart} still without tags`);
+const countLeft = db.prepare(`
+  SELECT count(*) AS n FROM eligible e LEFT JOIN artist_tag_fetches f ON f.artist_id = e.artist_id WHERE f.artist_id IS NULL
+`);
+console.log(`Queued ${queue.length} artists, out of ${countLeft.get().n} with a 2+ listener song still without tags`);
 
 let fetched = 0, errored = 0, consecutiveFailures = 0, next = 0, stopped = false, stopReason = "queue finished";
 const stop = (reason) => { if (!stopped) stopReason = reason; stopped = true; };
@@ -138,7 +148,7 @@ await Promise.all(Array.from({ length: concurrency }, async () => {
 
 progress.stop();
 
-const left = db.prepare("SELECT count(*) AS n FROM artists a LEFT JOIN artist_tag_fetches f ON f.artist_id = a.id WHERE f.artist_id IS NULL").get().n;
+const left = countLeft.get().n;
 db.close();
 console.log("Saving the database...");
 if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));

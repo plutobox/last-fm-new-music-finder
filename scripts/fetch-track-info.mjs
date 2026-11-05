@@ -1,6 +1,6 @@
 // Fetches each song's details via track.getInfo: url, global listeners and plays, album, tags and wiki date.
 // The wiki text is deliberately not stored: it's most of the response's size and nothing here uses it.
-// One request per song, once ever, most-listened songs first.
+// One request per song, once ever, most-listened songs first, skipping songs with only one listener.
 // Usage: node scripts/fetch-track-info.mjs --db db/users.db.age [--max-songs 20000] [--minutes 15]
 //                                          [--concurrency 3] [--max-per-second 4]
 //
@@ -158,22 +158,28 @@ function saveSong(songId, t) {
   }
 }
 
-// Most-listened first, so the songs people actually play get details soonest.
+// Most-listened first, and only songs with at least 2 listeners, the same rule as the public file. There are far
+// too many one-listener songs to look up, and one gets its turn if a second listener ever adds it.
+db.exec(`
+  CREATE TEMP TABLE eligible AS
+  SELECT song_id, count(*) AS listeners
+  FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
+  GROUP BY song_id
+  HAVING listeners >= 2
+`);
 const queue = db.prepare(`
   SELECT s.id, s.name AS song, a.name AS artist
-  FROM songs s
+  FROM eligible e
+  JOIN songs s ON s.id = e.song_id
   JOIN artists a ON a.id = s.artist_id
-  LEFT JOIN (
-    SELECT song_id, count(*) AS n
-    FROM (SELECT song_id FROM user_songs UNION ALL SELECT song_id FROM user_loved_songs)
-    GROUP BY song_id
-  ) p ON p.song_id = s.id
   WHERE s.info_fetched_at IS NULL
-  ORDER BY coalesce(p.n, 0) DESC, s.id
+  ORDER BY e.listeners DESC, s.id
   LIMIT ?
 `).all(maxSongs);
-const countLeft = db.prepare("SELECT count(*) AS n FROM songs WHERE info_fetched_at IS NULL");
-console.log(`Queued ${queue.length} songs, out of ${countLeft.get().n} still without details`);
+const countLeft = db.prepare(`
+  SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE s.info_fetched_at IS NULL
+`);
+console.log(`Queued ${queue.length} songs, out of ${countLeft.get().n} with 2+ listeners still without details`);
 
 let fetched = 0, errored = 0, consecutiveFailures = 0, next = 0, stopped = false, stopReason = "queue finished";
 const stop = (reason) => { if (!stopped) stopReason = reason; stopped = true; };
