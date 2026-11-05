@@ -1,0 +1,48 @@
+name: Start next fetch
+
+# GitHub often delays or drops scheduled runs, so each Fetch top songs run starts this, which waits and then starts the
+# next one. To pause the fetches, disable this workflow as well as Fetch top songs.
+#
+# It isn't in the database-write group, so it can wait without holding up other workflows. Only the newest timer stays
+# alive, so however a fetch started, there's never more than one next fetch on the way.
+on:
+  workflow_dispatch:
+    inputs:
+      delay_minutes:
+        description: "Minutes to wait before starting the fetch"
+        default: "0"
+
+permissions:
+  actions: write
+
+concurrency:
+  group: fetch-timer
+  cancel-in-progress: true
+
+jobs:
+  wait-and-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # the wait, plus time for a long MusicBrainz import to finish
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DELAY_MINUTES: ${{ inputs.delay_minutes }}
+    steps:
+      - name: Wait until it's time
+        run: sleep "$(( DELAY_MINUTES * 60 ))"
+
+      # GitHub keeps only one waiting run per group, so starting now could cancel a crawl or import that's waiting.
+      - name: Wait for the database workflows to finish
+        run: |
+          while :; do
+            active=0
+            for workflow in fetch-top-tracks.yml crawl-users.yml import-musicbrainz.yml; do
+              n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --limit 20 --json status --jq 'map(select(.status != "completed")) | length')
+              active=$(( active + n ))
+            done
+            [ "$active" -eq 0 ] && break
+            echo "$active database workflow(s) still running or waiting"
+            sleep 60
+          done
+
+      - name: Start the next fetch
+        run: gh workflow run fetch-top-tracks.yml --repo "$GITHUB_REPOSITORY"

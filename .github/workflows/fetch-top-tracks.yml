@@ -2,6 +2,7 @@ name: Fetch top songs
 
 on:
   schedule:
+    # Only a backup: GitHub often delays or drops these, so each run starts the next through fetch-timer.yml.
     # Every 2 hours, on odd hours. A run takes up to about 80 minutes, which leaves a gap for the crawl and import.
     - cron: "47 1-23/2 * * *"
   workflow_dispatch:
@@ -180,6 +181,27 @@ jobs:
 
       - name: Upload the database to the release
         run: node feature/scripts/release-store.mjs upload db
+
+  # Keeps the 2-hour pace, counted from when this run started. Not after a failed fetch, which includes a Last.fm rate
+  # limit stop, so a problem can't keep restarting itself. The cron above is still there as a backup.
+  schedule-next:
+    needs: [fetch, publish-songs]
+    if: ${{ !cancelled() && needs.fetch.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Start the timer for the next fetch
+        run: |
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
+          elapsed=$(( ( $(date +%s) - $(date -d "$started" +%s) ) / 60 ))
+          delay=$(( 120 - elapsed ))
+          [ "$delay" -lt 10 ] && delay=10
+          echo "This run took $elapsed minutes, so the next starts in $delay"
+          gh workflow run fetch-timer.yml --repo "$GITHUB_REPOSITORY" -f delay_minutes="$delay"
 
   publish-songs:
     needs: [fetch, apply-youtube]
