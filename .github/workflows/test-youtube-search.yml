@@ -6,7 +6,10 @@ on:
     inputs:
       count:
         description: "How many songs to look up"
-        default: "20"
+        default: "200"
+      workers:
+        description: "How many batches to run at once"
+        default: "4"
 
 permissions:
   contents: read
@@ -37,4 +40,5 @@ jobs:
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           COUNT: ${{ inputs.count }}
-        run: node scripts/test-youtube-search.mjs --count "$COUNT" --yt-dlp ./yt-dlp_linux
+          WORKERS: ${{ inputs.workers }}
+        run: node scripts/test-youtube-search.mjs --count "$COUNT" --workers "$WORKERS" --yt-dlp ./yt-dlp_linux
