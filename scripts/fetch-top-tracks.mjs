@@ -8,7 +8,8 @@
 //
 // Requests run in parallel, sharing one speed limit that slows down if Last.fm reports rate limiting.
 //
-// Order: LAST_FM_USERNAME first (similarity is measured against that user), then fewest friend-hops first.
+// Order: LAST_FM_USERNAME first (similarity is measured against that user), then most total listens (from
+// fetch-user-info.mjs), then most friends, then random. Users known to have no listens go last.
 // Each user is pulled once, ever: songs_fetched_at and loved_fetched_at are tracked separately, and whichever
 // is already set is never requested again.
 //
@@ -24,6 +25,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createClient } from "./lastfm-client.mjs";
 import { startProgress } from "./progress.mjs";
 import { encryptedDbExists, readEncryptedDb, writeEncryptedDb, DEFAULT_PART_MB } from "./db-store.mjs";
+import { addProfileColumns, FRIEND_COUNTS, FRIENDS } from "./user-activity.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -412,10 +414,17 @@ if (me) {
   console.log("::warning::LAST_FM_USERNAME is not set, so similarity won't be calculated");
 }
 
+addProfileColumns(db);
 const queue = db.prepare(`
-  SELECT id, name, songs_fetched_at, loved_fetched_at FROM users
-  WHERE songs_fetched_at IS NULL OR loved_fetched_at IS NULL
-  ORDER BY name = ? COLLATE NOCASE DESC, depth, random()
+  WITH ${FRIEND_COUNTS}
+  SELECT u.id, u.name, u.songs_fetched_at, u.loved_fetched_at
+  FROM users u LEFT JOIN friend_counts f ON f.name = u.name COLLATE NOCASE
+  WHERE u.songs_fetched_at IS NULL OR u.loved_fetched_at IS NULL
+  ORDER BY u.name = ? COLLATE NOCASE DESC,
+           u.profile_fetched_at IS NOT NULL AND COALESCE(u.total_plays, 0) = 0,
+           u.total_plays DESC,
+           ${FRIENDS} DESC,
+           random()
   LIMIT ?
 `).all(me ?? "", maxUsers);
 console.log(`Queued ${queue.length} users`);

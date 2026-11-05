@@ -43,6 +43,14 @@ jobs:
       - name: Download the database from the release
         run: node feature/scripts/release-store.mjs download db
 
+      # Before the songs, so that step can start with the most active users.
+      - name: Fetch total listens for waiting users
+        env:
+          LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
+          LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+          LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
+        run: node feature/scripts/fetch-user-info.mjs --db db/users.db.age --minutes 10
+
       - name: Fetch top and loved songs (decrypts, updates, re-encrypts)
         env:
           LAST_FM_API_KEY: ${{ secrets.LAST_FM_API_KEY }}
@@ -51,7 +59,7 @@ jobs:
           LAST_FM_APPLICATION_NAME: ${{ vars.LAST_FM_APPLICATION_NAME }}
           # Scheduled runs have no inputs, so fall back to the defaults.
           MAX_USERS: ${{ inputs.max_users || '5000' }}
-          MINUTES: ${{ inputs.minutes || '40' }}
+          MINUTES: ${{ inputs.minutes || '30' }}
         run: |
           node feature/scripts/fetch-top-tracks.mjs \
             --db db/users.db.age \

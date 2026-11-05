@@ -1,5 +1,6 @@
 // Finds YouTube videos for songs with no MusicBrainz link, using yt-dlp for metadata only: no video or audio is
-// downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, most-listened first, each searched once.
+// downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, each searched once, in order of most loved,
+// then most listeners, then most plays.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
 //                                           [--workers 4] [--batch 25] [--max-songs 20000] [--yt-dlp yt-dlp]
 //
@@ -152,10 +153,23 @@ for (const column of ["youtube_id TEXT", "youtube_search_id TEXT", "youtube_sear
 
 db.exec(`
   CREATE TEMP TABLE eligible AS
-  SELECT song_id, count(*) AS listeners
-  FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
-  GROUP BY song_id
-  HAVING listeners >= 2
+  WITH listeners AS (
+    SELECT song_id, count(*) AS n
+    FROM (SELECT user_id, song_id FROM user_songs UNION SELECT user_id, song_id FROM user_loved_songs)
+    GROUP BY song_id
+    HAVING n >= 2
+  ),
+  loved AS (SELECT song_id, count(*) AS n FROM user_loved_songs GROUP BY song_id),
+  -- A user can have a song in both periods; the overall count already includes the 12-month plays, so take the higher.
+  plays AS (
+    SELECT song_id, sum(p) AS n
+    FROM (SELECT user_id, song_id, max(playcount) AS p FROM user_songs GROUP BY user_id, song_id)
+    GROUP BY song_id
+  )
+  SELECT l.song_id, l.n AS listeners, COALESCE(h.n, 0) AS loved, COALESCE(p.n, 0) AS plays
+  FROM listeners l
+  LEFT JOIN loved h ON h.song_id = l.song_id
+  LEFT JOIN plays p ON p.song_id = l.song_id
 `);
 const WAITING = "s.youtube_id IS NULL AND s.youtube_search_id IS NULL AND s.youtube_searched_at IS NULL";
 const queue = db.prepare(`
@@ -164,7 +178,7 @@ const queue = db.prepare(`
   JOIN songs s ON s.id = e.song_id
   JOIN artists a ON a.id = s.artist_id
   WHERE ${WAITING}
-  ORDER BY e.listeners DESC, s.id
+  ORDER BY e.loved DESC, e.listeners DESC, e.plays DESC, s.id
   LIMIT ?
 `).all(MAX_SONGS);
 const waitingAtStart = db.prepare(`SELECT count(*) AS n FROM eligible e JOIN songs s ON s.id = e.song_id WHERE ${WAITING}`).get().n;
