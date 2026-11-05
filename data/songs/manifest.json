@@ -1,0 +1,43 @@
+{
+ "built_at": "2026-11-05T05:33:16.701Z",
+ "version": "8e22518d8fe593f0",
+ "columns": [
+  "artist",
+  "song",
+  "genres",
+  "listeners",
+  "plays",
+  "loved_by",
+  "year",
+  "youtube_id",
+  "spotify_id"
+ ],
+ "count": 549519,
+ "parts": [
+  {
+   "name": "part-000.json",
+   "songs": 118571,
+   "bytes": 10485728
+  },
+  {
+   "name": "part-001.json",
+   "songs": 125232,
+   "bytes": 10485701
+  },
+  {
+   "name": "part-002.json",
+   "songs": 124498,
+   "bytes": 10485740
+  },
+  {
+   "name": "part-003.json",
+   "songs": 122931,
+   "bytes": 10485718
+  },
+  {
+   "name": "part-004.json",
+   "songs": 58287,
+   "bytes": 5043162
+  }
+ ]
+}
