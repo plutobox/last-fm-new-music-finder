@@ -2,7 +2,7 @@
 // Only reads the database. The output holds song IDs and counts of shared listeners: no usernames or per-user data, and
 // a match needs at least --min-shared listeners in common, so it can't simply be one person's list.
 // Usage: node scripts/export-similar.mjs --db db/users.db.age --songs-dir public-songs --out similar-out
-//          [--songs "Mallrat - Groceries,Karma Police"] [--minutes 300] [--min-listeners 5] [--top 20]
+//          [--songs "Mallrat - Groceries,Karma Police"] [--minutes 300] [--min-listeners 3] [--top 20]
 //          [--min-shared 3] [--max-per-artist 3] [--max-user-songs 10000] [--shards 512]
 //
 // --songs-dir is a folder written by export-songs.mjs: only songs in it are matched or shown. --songs (or the SONGS env
@@ -31,7 +31,7 @@ const outDir = args.out;
 if (!songsDir || !outDir) throw new Error("--songs-dir and --out are required");
 const SONGS = (args.songs ?? process.env.SONGS ?? "").trim();
 const MINUTES = Number(args.minutes ?? 300);
-const MIN_LISTENERS = Number(args["min-listeners"] ?? 5);
+const MIN_LISTENERS = Number(args["min-listeners"] ?? 3); // a match needs 3 in common, so fewer could never have one
 const TOP = Number(args.top ?? 20);
 const MIN_SHARED = Number(args["min-shared"] ?? 3);
 const MAX_PER_ARTIST = Number(args["max-per-artist"] ?? 3);

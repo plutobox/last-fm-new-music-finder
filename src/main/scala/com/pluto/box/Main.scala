@@ -325,7 +325,7 @@ private def finder(library: Library) =
             case MatchLoad.Loading         => p("Finding songs...")
             case MatchLoad.Failed(message) => p(s"Couldn't load the matches: $message.")
             case MatchLoad.Ready(matches) if matches.isEmpty =>
-              p("No matches for this song yet. It needs at least 5 listeners, and matches update weekly.")
+              p("No matches for this song yet. It needs at least 3 listeners who share other songs, and matches update weekly.")
             case MatchLoad.Ready(matches) =>
               div(
                 p(cls := "hint", "Most likely first, based on what this song's listeners also listen to or love."),

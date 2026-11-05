@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       songs:
-        description: 'Optional. Comma-separated songs to build, each "Artist - Song" or a title. Empty builds every song with 5+ listeners. Use double quotes around a name with a comma.'
+        description: 'Optional. Comma-separated songs to build, each "Artist - Song" or a title. Empty builds every song with 3+ listeners. Use double quotes around a name with a comma.'
         required: false
         default: ""
 
