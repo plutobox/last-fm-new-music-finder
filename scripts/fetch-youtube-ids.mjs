@@ -2,7 +2,7 @@
 // metadata only: no video or audio is downloaded, and no cookies or sign-in are used. Songs with 2+ listeners, unless
 // already found through YouTube Music, each searched once, in order of most loved, then most listeners, then most plays.
 // Usage: node scripts/fetch-youtube-ids.mjs --db db/users.db.age --results youtube-results.jsonl [--minutes 45]
-//                                           [--workers 4] [--batch 25] [--max-songs 20000] [--yt-dlp yt-dlp]
+//                                           [--workers 8] [--batch 25] [--max-songs 20000] [--max-api-units 800] [--yt-dlp yt-dlp]
 //
 // It only reads the database, so it can run alongside the Last.fm job. Results go to the --results file, and
 // apply-youtube-ids.mjs saves them once that job has finished. Each line holds a song's database ID and its video ID.
@@ -44,7 +44,10 @@ const dbPath = args.db ?? "data/users.db";
 const resultsFile = args.results;
 if (!resultsFile) throw new Error("--results is required");
 const deadline = Date.now() + Number(args.minutes ?? 45) * 60_000;
-const WORKERS = Number(args.workers ?? 4);
+// In a local test, 8 scaled cleanly. Errors began at 16, and at 32 a fifth of searches failed.
+const WORKERS = Number(args.workers ?? 8);
+// Stays under the API's 10,000 units a day at 12 runs a day.
+const MAX_API_UNITS = Number(args["max-api-units"] ?? 800);
 const BATCH = Number(args.batch ?? 25);
 const MAX_SONGS = Number(args["max-songs"] ?? 20000);
 const YT_DLP = args["yt-dlp"] ?? "yt-dlp";
@@ -75,7 +78,8 @@ function isGoodVideo(song, video) {
 let searches = 0, challengedBatches = 0, inARow = 0, stopReason = null;
 const stop = (reason) => { stopReason ??= reason; };
 
-// Returns { results: Map(query -> id), ok }. ok is false if the batch was challenged or failed outright.
+// Returns { results: Map(query -> id), clean }. clean is false if anything in the batch went wrong: with --ignore-errors,
+// a failed search just leaves that song out of the results, so a missing song only means "nothing found" if it's true.
 async function search(songs, { urlFor, queryFromTitle, extra }) {
   searches += songs.length;
   let stdout = "", stderr = "";
@@ -102,7 +106,7 @@ async function search(songs, { urlFor, queryFromTitle, extra }) {
   } else {
     inARow = 0;
   }
-  return { results, ok: !challenged && (stdout.trim() !== "" || stderr.trim() === "") };
+  return { results, clean: stderr.trim() === "" };
 }
 
 const musicSearch = (songs) => search(songs, {
@@ -234,10 +238,10 @@ async function processBatch(songs) {
   const afterNormal = keepGood(afterMusic, normal.results, normalVideos, "search");
 
   // Only a song that both searches really looked at is finished. The rest get another try on a later run.
-  if (music.ok && normal.ok) {
-    for (const song of afterNormal) { save(null, null, song.id); noMatch++; done++; }
-  } else {
-    retryLater += afterNormal.length;
+  const lookedAt = (search, song) => search.clean || search.results.has(song.query);
+  for (const song of afterNormal) {
+    if (lookedAt(music, song) && lookedAt(normal, song)) { save(null, null, song.id); noMatch++; done++; }
+    else retryLater++;
   }
 }
 
@@ -259,13 +263,13 @@ const progress = startProgress({
 });
 
 await Promise.all(Array.from({ length: WORKERS }, async () => {
-  while (!stopReason && next < batches.length && Date.now() < deadline) await processBatch(batches[next++]);
+  while (!stopReason && next < batches.length && Date.now() < deadline && apiUnits < MAX_API_UNITS) await processBatch(batches[next++]);
 }));
 progress.stop();
 
 console.log(
   `YouTube search: ${fromMusic} from YouTube Music, ${fromSearch} from normal search, ${noMatch} no good match, ` +
   `${retryLater} to retry, ${waitingAtStart - done} left. ${searches} searches, ${challengedBatches} challenged batches, ${apiUnits} API units. ` +
-  `Stopped: ${stopReason ?? (Date.now() >= deadline ? "time limit" : "queue finished")}`
+  `Stopped: ${stopReason ?? (Date.now() >= deadline ? "time limit" : apiUnits >= MAX_API_UNITS ? "API unit limit for this run" : "queue finished")}`
 );
 if (stopReason) console.log(`::warning::YouTube search stopped early: ${stopReason}`);
