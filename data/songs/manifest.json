@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-07T15:00:01.957Z",
- "version": "c97a4a3892921fca",
+ "built_at": "2026-11-07T16:57:28.597Z",
+ "version": "53848cc0358e9a63",
  "columns": [
   "artist",
   "song",
@@ -13,132 +13,132 @@
   "spotify_id",
   "id"
  ],
- "count": 2806459,
+ "count": 2841951,
  "parts": [
   {
    "name": "part-000.json",
-   "songs": 102177,
-   "bytes": 10485691
+   "songs": 102053,
+   "bytes": 10485719
   },
   {
    "name": "part-001.json",
-   "songs": 113210,
-   "bytes": 10485679
+   "songs": 113158,
+   "bytes": 10485671
   },
   {
    "name": "part-002.json",
-   "songs": 114283,
-   "bytes": 10485730
+   "songs": 114255,
+   "bytes": 10485771
   },
   {
    "name": "part-003.json",
-   "songs": 114847,
-   "bytes": 10485687
-  },
-  {
-   "name": "part-004.json",
-   "songs": 115426,
-   "bytes": 10485738
-  },
-  {
-   "name": "part-005.json",
-   "songs": 117771,
-   "bytes": 10485682
-  },
-  {
-   "name": "part-006.json",
-   "songs": 117752,
-   "bytes": 10485688
-  },
-  {
-   "name": "part-007.json",
-   "songs": 117485,
-   "bytes": 10485696
-  },
-  {
-   "name": "part-008.json",
-   "songs": 118518,
-   "bytes": 10485759
-  },
-  {
-   "name": "part-009.json",
-   "songs": 117872,
-   "bytes": 10485761
-  },
-  {
-   "name": "part-010.json",
-   "songs": 117880,
-   "bytes": 10485718
-  },
-  {
-   "name": "part-011.json",
-   "songs": 117507,
-   "bytes": 10485729
-  },
-  {
-   "name": "part-012.json",
-   "songs": 118341,
-   "bytes": 10485770
-  },
-  {
-   "name": "part-013.json",
-   "songs": 117700,
-   "bytes": 10485746
-  },
-  {
-   "name": "part-014.json",
-   "songs": 118029,
-   "bytes": 10485699
-  },
-  {
-   "name": "part-015.json",
-   "songs": 116844,
-   "bytes": 10485764
-  },
-  {
-   "name": "part-016.json",
-   "songs": 118570,
-   "bytes": 10485719
-  },
-  {
-   "name": "part-017.json",
-   "songs": 116983,
-   "bytes": 10485719
-  },
-  {
-   "name": "part-018.json",
-   "songs": 116892,
-   "bytes": 10485720
-  },
-  {
-   "name": "part-019.json",
-   "songs": 116390,
-   "bytes": 10485706
-  },
-  {
-   "name": "part-020.json",
-   "songs": 118027,
-   "bytes": 10485696
-  },
-  {
-   "name": "part-021.json",
-   "songs": 116499,
+   "songs": 114932,
    "bytes": 10485763
   },
   {
+   "name": "part-004.json",
+   "songs": 115102,
+   "bytes": 10485758
+  },
+  {
+   "name": "part-005.json",
+   "songs": 117809,
+   "bytes": 10485714
+  },
+  {
+   "name": "part-006.json",
+   "songs": 117561,
+   "bytes": 10485769
+  },
+  {
+   "name": "part-007.json",
+   "songs": 117940,
+   "bytes": 10485736
+  },
+  {
+   "name": "part-008.json",
+   "songs": 118122,
+   "bytes": 10485724
+  },
+  {
+   "name": "part-009.json",
+   "songs": 117950,
+   "bytes": 10485710
+  },
+  {
+   "name": "part-010.json",
+   "songs": 117841,
+   "bytes": 10485725
+  },
+  {
+   "name": "part-011.json",
+   "songs": 117192,
+   "bytes": 10485740
+  },
+  {
+   "name": "part-012.json",
+   "songs": 118775,
+   "bytes": 10485757
+  },
+  {
+   "name": "part-013.json",
+   "songs": 117742,
+   "bytes": 10485613
+  },
+  {
+   "name": "part-014.json",
+   "songs": 117537,
+   "bytes": 10485763
+  },
+  {
+   "name": "part-015.json",
+   "songs": 116890,
+   "bytes": 10485735
+  },
+  {
+   "name": "part-016.json",
+   "songs": 118942,
+   "bytes": 10485755
+  },
+  {
+   "name": "part-017.json",
+   "songs": 116851,
+   "bytes": 10485712
+  },
+  {
+   "name": "part-018.json",
+   "songs": 117311,
+   "bytes": 10485708
+  },
+  {
+   "name": "part-019.json",
+   "songs": 116185,
+   "bytes": 10485694
+  },
+  {
+   "name": "part-020.json",
+   "songs": 117654,
+   "bytes": 10485710
+  },
+  {
+   "name": "part-021.json",
+   "songs": 116355,
+   "bytes": 10485736
+  },
+  {
    "name": "part-022.json",
-   "songs": 114858,
-   "bytes": 10485692
+   "songs": 117591,
+   "bytes": 10485675
   },
   {
    "name": "part-023.json",
-   "songs": 116028,
-   "bytes": 10485673
+   "songs": 114523,
+   "bytes": 10485743
   },
   {
    "name": "part-024.json",
-   "songs": 16570,
-   "bytes": 1368676
+   "songs": 51680,
+   "bytes": 4593924
   }
  ]
 }
