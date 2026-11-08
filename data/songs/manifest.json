@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-08T08:37:19.340Z",
- "version": "ab434c1e7668ef1f",
+ "built_at": "2026-11-08T10:34:19.805Z",
+ "version": "411dff81cfaef8db",
  "columns": [
   "artist",
   "song",
@@ -13,12 +13,12 @@
   "spotify_id",
   "id"
  ],
- "count": 2877428,
+ "count": 2879253,
  "parts": [
   {
    "name": "part-000.json",
    "songs": 101889,
-   "bytes": 10485763
+   "bytes": 10485705
   },
   {
    "name": "part-001.json",
@@ -77,68 +77,68 @@
   },
   {
    "name": "part-012.json",
-   "songs": 119111,
-   "bytes": 10485694
-  },
-  {
-   "name": "part-013.json",
-   "songs": 118151,
-   "bytes": 10485713
-  },
-  {
-   "name": "part-014.json",
-   "songs": 117245,
+   "songs": 119119,
    "bytes": 10485765
   },
   {
+   "name": "part-013.json",
+   "songs": 118142,
+   "bytes": 10485728
+  },
+  {
+   "name": "part-014.json",
+   "songs": 117237,
+   "bytes": 10485738
+  },
+  {
    "name": "part-015.json",
-   "songs": 116537,
-   "bytes": 10485681
+   "songs": 116772,
+   "bytes": 10485728
   },
   {
    "name": "part-016.json",
-   "songs": 119335,
-   "bytes": 10485762
+   "songs": 119062,
+   "bytes": 10485709
   },
   {
    "name": "part-017.json",
-   "songs": 117224,
-   "bytes": 10485730
+   "songs": 117295,
+   "bytes": 10485725
   },
   {
    "name": "part-018.json",
-   "songs": 117303,
-   "bytes": 10485763
+   "songs": 117491,
+   "bytes": 10485751
   },
   {
    "name": "part-019.json",
-   "songs": 117815,
-   "bytes": 10485750
+   "songs": 117604,
+   "bytes": 10485716
   },
   {
    "name": "part-020.json",
-   "songs": 116838,
-   "bytes": 10485735
+   "songs": 116933,
+   "bytes": 10485709
   },
   {
    "name": "part-021.json",
-   "songs": 116930,
-   "bytes": 10485754
+   "songs": 117128,
+   "bytes": 10485740
   },
   {
    "name": "part-022.json",
-   "songs": 117495,
-   "bytes": 10485664
+   "songs": 117277,
+   "bytes": 10485672
   },
   {
    "name": "part-023.json",
-   "songs": 113728,
-   "bytes": 10485760
+   "songs": 113791,
+   "bytes": 10485726
   },
   {
    "name": "part-024.json",
-   "songs": 87573,
-   "bytes": 7743090
+   "songs": 89259,
+   "bytes": 7901568
   }
  ]
 }
