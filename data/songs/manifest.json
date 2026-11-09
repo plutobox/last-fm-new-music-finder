@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-09T11:20:28.655Z",
- "version": "3551067655cd046b",
+ "built_at": "2026-11-09T13:55:16.128Z",
+ "version": "f2825e27b4ab0656",
  "columns": [
   "artist",
   "song",
@@ -13,137 +13,142 @@
   "spotify_id",
   "id"
  ],
- "count": 2996199,
+ "count": 3041968,
  "parts": [
   {
    "name": "part-000.json",
-   "songs": 101553,
-   "bytes": 10485712
+   "songs": 101544,
+   "bytes": 10485683
   },
   {
    "name": "part-001.json",
-   "songs": 109624,
-   "bytes": 10485713
+   "songs": 109462,
+   "bytes": 10485771
   },
   {
    "name": "part-002.json",
-   "songs": 114017,
-   "bytes": 10485699
+   "songs": 114080,
+   "bytes": 10485695
   },
   {
    "name": "part-003.json",
-   "songs": 114581,
-   "bytes": 10485686
+   "songs": 114652,
+   "bytes": 10485739
   },
   {
    "name": "part-004.json",
-   "songs": 115117,
-   "bytes": 10485687
+   "songs": 114949,
+   "bytes": 10485708
   },
   {
    "name": "part-005.json",
-   "songs": 116856,
-   "bytes": 10485765
+   "songs": 116594,
+   "bytes": 10485725
   },
   {
    "name": "part-006.json",
-   "songs": 117678,
-   "bytes": 10485738
+   "songs": 117638,
+   "bytes": 10485665
   },
   {
    "name": "part-007.json",
-   "songs": 117811,
-   "bytes": 10485719
+   "songs": 117799,
+   "bytes": 10485772
   },
   {
    "name": "part-008.json",
-   "songs": 117785,
-   "bytes": 10485759
+   "songs": 117748,
+   "bytes": 10485699
   },
   {
    "name": "part-009.json",
-   "songs": 117104,
-   "bytes": 10485734
-  },
-  {
-   "name": "part-010.json",
-   "songs": 118386,
-   "bytes": 10485712
-  },
-  {
-   "name": "part-011.json",
-   "songs": 117746,
-   "bytes": 10485750
-  },
-  {
-   "name": "part-012.json",
-   "songs": 117823,
-   "bytes": 10485721
-  },
-  {
-   "name": "part-013.json",
-   "songs": 118046,
-   "bytes": 10485693
-  },
-  {
-   "name": "part-014.json",
-   "songs": 117861,
-   "bytes": 10485703
-  },
-  {
-   "name": "part-015.json",
-   "songs": 117731,
-   "bytes": 10485684
-  },
-  {
-   "name": "part-016.json",
-   "songs": 116864,
-   "bytes": 10485680
-  },
-  {
-   "name": "part-017.json",
-   "songs": 118956,
-   "bytes": 10485732
-  },
-  {
-   "name": "part-018.json",
-   "songs": 116732,
-   "bytes": 10485655
-  },
-  {
-   "name": "part-019.json",
-   "songs": 117653,
-   "bytes": 10485697
-  },
-  {
-   "name": "part-020.json",
-   "songs": 116553,
-   "bytes": 10485770
-  },
-  {
-   "name": "part-021.json",
-   "songs": 117349,
+   "songs": 117934,
    "bytes": 10485751
   },
   {
+   "name": "part-010.json",
+   "songs": 117770,
+   "bytes": 10485690
+  },
+  {
+   "name": "part-011.json",
+   "songs": 117772,
+   "bytes": 10485771
+  },
+  {
+   "name": "part-012.json",
+   "songs": 117474,
+   "bytes": 10485741
+  },
+  {
+   "name": "part-013.json",
+   "songs": 118253,
+   "bytes": 10485758
+  },
+  {
+   "name": "part-014.json",
+   "songs": 117522,
+   "bytes": 10485725
+  },
+  {
+   "name": "part-015.json",
+   "songs": 117921,
+   "bytes": 10485738
+  },
+  {
+   "name": "part-016.json",
+   "songs": 116522,
+   "bytes": 10485693
+  },
+  {
+   "name": "part-017.json",
+   "songs": 119103,
+   "bytes": 10485682
+  },
+  {
+   "name": "part-018.json",
+   "songs": 117177,
+   "bytes": 10485765
+  },
+  {
+   "name": "part-019.json",
+   "songs": 117627,
+   "bytes": 10485713
+  },
+  {
+   "name": "part-020.json",
+   "songs": 117114,
+   "bytes": 10485681
+  },
+  {
+   "name": "part-021.json",
+   "songs": 117001,
+   "bytes": 10485727
+  },
+  {
    "name": "part-022.json",
-   "songs": 117207,
+   "songs": 117736,
    "bytes": 10485770
   },
   {
    "name": "part-023.json",
-   "songs": 117654,
-   "bytes": 10485747
+   "songs": 116703,
+   "bytes": 10485701
   },
   {
    "name": "part-024.json",
-   "songs": 113715,
-   "bytes": 10485747
+   "songs": 114450,
+   "bytes": 10485738
   },
   {
    "name": "part-025.json",
-   "songs": 93797,
-   "bytes": 8306123
+   "songs": 116146,
+   "bytes": 10485745
+  },
+  {
+   "name": "part-026.json",
+   "songs": 23277,
+   "bytes": 1942611
   }
  ]
 }
