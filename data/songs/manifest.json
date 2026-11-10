@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-10T04:54:27.236Z",
- "version": "06bdeeff629a5d9f",
+ "built_at": "2026-11-10T06:34:42.678Z",
+ "version": "6ff3ecd0a60e61b2",
  "columns": [
   "artist",
   "song",
@@ -13,142 +13,142 @@
   "spotify_id",
   "id"
  ],
- "count": 3115469,
+ "count": 3117665,
  "parts": [
   {
    "name": "part-000.json",
-   "songs": 101442,
-   "bytes": 10485762
+   "songs": 101438,
+   "bytes": 10485699
   },
   {
    "name": "part-001.json",
-   "songs": 108812,
-   "bytes": 10485735
+   "songs": 108175,
+   "bytes": 10485763
   },
   {
    "name": "part-002.json",
-   "songs": 114057,
-   "bytes": 10485717
+   "songs": 114050,
+   "bytes": 10485715
   },
   {
    "name": "part-003.json",
-   "songs": 114589,
-   "bytes": 10485772
+   "songs": 114591,
+   "bytes": 10485738
   },
   {
    "name": "part-004.json",
-   "songs": 114924,
-   "bytes": 10485754
+   "songs": 114956,
+   "bytes": 10485750
   },
   {
    "name": "part-005.json",
-   "songs": 116260,
+   "songs": 116214,
    "bytes": 10485718
   },
   {
    "name": "part-006.json",
-   "songs": 117650,
-   "bytes": 10485725
+   "songs": 117628,
+   "bytes": 10485732
   },
   {
    "name": "part-007.json",
-   "songs": 117739,
-   "bytes": 10485741
+   "songs": 117761,
+   "bytes": 10485762
   },
   {
    "name": "part-008.json",
-   "songs": 117636,
-   "bytes": 10485717
+   "songs": 117616,
+   "bytes": 10485758
   },
   {
    "name": "part-009.json",
-   "songs": 118073,
-   "bytes": 10485672
+   "songs": 118089,
+   "bytes": 10485747
   },
   {
    "name": "part-010.json",
-   "songs": 117668,
-   "bytes": 10485767
+   "songs": 117670,
+   "bytes": 10485662
   },
   {
    "name": "part-011.json",
-   "songs": 117583,
-   "bytes": 10485695
+   "songs": 117611,
+   "bytes": 10485716
   },
   {
    "name": "part-012.json",
-   "songs": 117168,
-   "bytes": 10485660
+   "songs": 117093,
+   "bytes": 10485722
   },
   {
    "name": "part-013.json",
-   "songs": 119070,
-   "bytes": 10485730
+   "songs": 119082,
+   "bytes": 10485752
   },
   {
    "name": "part-014.json",
-   "songs": 117617,
-   "bytes": 10485695
+   "songs": 117639,
+   "bytes": 10485727
   },
   {
    "name": "part-015.json",
-   "songs": 117982,
+   "songs": 117947,
    "bytes": 10485732
   },
   {
    "name": "part-016.json",
-   "songs": 115771,
-   "bytes": 10485722
+   "songs": 115845,
+   "bytes": 10485766
   },
   {
    "name": "part-017.json",
-   "songs": 119099,
-   "bytes": 10485702
+   "songs": 119088,
+   "bytes": 10485666
   },
   {
    "name": "part-018.json",
-   "songs": 118538,
-   "bytes": 10485710
+   "songs": 118464,
+   "bytes": 10485739
   },
   {
    "name": "part-019.json",
-   "songs": 116892,
-   "bytes": 10485722
+   "songs": 117020,
+   "bytes": 10485742
   },
   {
    "name": "part-020.json",
-   "songs": 116884,
-   "bytes": 10485692
+   "songs": 116895,
+   "bytes": 10485654
   },
   {
    "name": "part-021.json",
-   "songs": 116366,
-   "bytes": 10485743
+   "songs": 116359,
+   "bytes": 10485718
   },
   {
    "name": "part-022.json",
-   "songs": 118132,
-   "bytes": 10485759
+   "songs": 118288,
+   "bytes": 10485751
   },
   {
    "name": "part-023.json",
-   "songs": 116905,
-   "bytes": 10485685
+   "songs": 116824,
+   "bytes": 10485709
   },
   {
    "name": "part-024.json",
-   "songs": 117913,
-   "bytes": 10485756
+   "songs": 117831,
+   "bytes": 10485718
   },
   {
    "name": "part-025.json",
-   "songs": 113522,
-   "bytes": 10485637
+   "songs": 113541,
+   "bytes": 10485676
   },
   {
    "name": "part-026.json",
-   "songs": 97177,
-   "bytes": 8606678
+   "songs": 99950,
+   "bytes": 8850727
   }
  ]
 }
