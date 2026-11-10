@@ -83,7 +83,7 @@ log(`public songs: ${total}`);
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-similar-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 const db = new DatabaseSync(localDb, { readOnly: true });
 
 let pairUsers = new Int32Array(1 << 22), pairSongs = new Int32Array(1 << 22), pairs = 0;

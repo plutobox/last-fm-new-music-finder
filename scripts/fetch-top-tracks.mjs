@@ -139,7 +139,7 @@ function computeStats(rows, total) {
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-songs-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 
 const db = new DatabaseSync(localDb);
 saveErrorsTo(db);
@@ -535,7 +535,7 @@ db.exec("VACUUM");
 const finalBytes = dbBytes();
 db.close();
 
-const files = encrypted ? await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), partMb) : 1;
+const files = encrypted ? await writeEncryptedDb(dbPath, ageIdentity, localDb, partMb) : 1;
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(

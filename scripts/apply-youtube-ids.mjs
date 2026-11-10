@@ -28,7 +28,7 @@ const results = fs.readFileSync(resultsFile, "utf8").split("\n").filter(Boolean)
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-apply-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 const db = new DatabaseSync(localDb);
 db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 
@@ -69,7 +69,7 @@ console.log(`Cleared ${cleared} "no match" marks from before the fix, so those s
 console.log("Saving the database...");
 db.exec("VACUUM");
 db.close();
-if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
+if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, localDb, Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(`Applied ${results.length} YouTube results: ${added} new, ${replaced} replaced, ${kept} found nothing and kept their video, ${none} found nothing and have none.`);

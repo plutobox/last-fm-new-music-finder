@@ -161,7 +161,7 @@ async function lookUpVideos(ids) {
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-youtube-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 const db = new DatabaseSync(localDb);
 db.exec("PRAGMA journal_mode = DELETE; PRAGMA synchronous = OFF;");
 

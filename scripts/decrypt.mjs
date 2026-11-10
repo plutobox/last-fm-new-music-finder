@@ -11,5 +11,5 @@ const identity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 if (!identity) throw new Error("LAST_FM_AGE_IDENTITY is not set");
 if (!encryptedDbExists(input)) throw new Error(`${input} not found`);
 
-fs.writeFileSync(output, await readEncryptedDb(input, identity), { mode: 0o600 });
+await readEncryptedDb(input, identity, output);
 console.log(`Decrypted to ${output}`);

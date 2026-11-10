@@ -43,7 +43,7 @@ const client = createClient({
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-tags-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 
 const db = new DatabaseSync(localDb);
 saveErrorsTo(db);
@@ -153,7 +153,7 @@ progress.stop();
 const left = countLeft.get().n;
 db.close();
 console.log("Saving the database...");
-if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
+if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, localDb, Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(

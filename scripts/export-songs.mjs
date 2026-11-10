@@ -55,7 +55,7 @@ if (!(encrypted ? encryptedDbExists(dbPath) : fs.existsSync(dbPath))) throw new 
 
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-export-"));
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted) await readEncryptedDb(dbPath, ageIdentity, localDb);
 const db = new DatabaseSync(localDb, { readOnly: true });
 
 console.log("Reading the database...");

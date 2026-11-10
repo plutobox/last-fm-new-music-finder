@@ -79,7 +79,7 @@ async function getFriendsPage(user, page) {
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "lfm-crawl-"));
 const encrypted = dbPath.endsWith(".age");
 const localDb = encrypted ? path.join(workDir, "users.db") : dbPath;
-if (encrypted && encryptedDbExists(dbPath)) fs.writeFileSync(localDb, await readEncryptedDb(dbPath, ageIdentity));
+if (encrypted && encryptedDbExists(dbPath)) await readEncryptedDb(dbPath, ageIdentity, localDb);
 fs.mkdirSync(path.dirname(localDb), { recursive: true });
 
 const db = new DatabaseSync(localDb);
@@ -283,7 +283,7 @@ const edges = db.prepare("SELECT count(*) AS n FROM friendships").get().n;
 db.exec("VACUUM");
 db.close();
 
-if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, fs.readFileSync(localDb), Number(args["part-mb"] ?? DEFAULT_PART_MB));
+if (encrypted) await writeEncryptedDb(dbPath, ageIdentity, localDb, Number(args["part-mb"] ?? DEFAULT_PART_MB));
 fs.rmSync(workDir, { recursive: true, force: true });
 
 console.log(
