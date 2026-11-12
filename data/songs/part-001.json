@@ -6904,7 +6904,7 @@
 ["Louis Tomlinson","Imposter",["pop","indie"],64,4527,37,null,"0aOU-LBtxUI",null,840813],
 ["WillyRodriguezWasTaken","revisited",["indie rock","emo","shoegaze"],64,4497,48,null,"_5h6-K3BQ3s",null,832829],
 ["ZXKAI","NO BATIDÃO",["funk"],64,4482,7,2025,"ZB0amc1TZ3Y",null,77854],
-["The Marías","Jupiter",["indie pop","indie"],64,4450,53,null,"t_gJ4UxZLnk",null,707678],
+["The Marías","Jupiter",["indie"],64,4450,53,null,"t_gJ4UxZLnk",null,707678],
 ["Casper","Kontrolle/Schlaf",["rap","hip-hop"],64,4419,49,null,"IKVOxRZoVJI",null,884087],
 ["Che","YDFWMNM?",["trap"],64,4391,52,null,"pcSmEwCkkRQ",null,2918789],
 ["Princesa Alba","Convéncete",["trap","reggaeton","pop"],64,4335,57,2019,"LoEGKfUOuQI",null,498180],
@@ -6933,7 +6933,7 @@
 ["Not For Radio","Water On Your Nose",["indie pop"],64,3498,42,null,"_6ASG3BVKys",null,1624030],
 ["Mindless Self Indulgence","Prove Me Wrong",["electronic","punk"],64,3456,44,null,"wBbRgrg7Ro0",null,2905229],
 ["BUCK-TICK","太陽ニ殺サレタ",["rock"],64,3453,60,null,"cOU_iRZ_p2E",null,3367074],
-["JISOO","CLICK",["k-pop","pop"],64,3443,46,null,"jLCo8597v_g",null,1028265],
+["JISOO","CLICK",["pop"],64,3443,46,null,"jLCo8597v_g",null,1028265],
 ["Parannoul","Gold River",["shoegaze","emo"],64,3434,59,null,"Vge2ICc6PFY",null,737396],
 ["UnoTheActivist","SLAVE",["rap","trap","hip-hop"],64,3417,56,null,"S9Og124aAq4",null,3121556],
 ["ALICJA","Pray",["pop"],64,3413,19,2026,null,null,5060],
@@ -7033,7 +7033,7 @@
 ["Bladee","1million",["trap","hip-hop"],64,2244,55,null,"w-gKWH5YddI",null,846877],
 ["Ava Max","On Somebody",["pop","electropop"],64,2237,62,null,"1vroIeuUQTc",null,1618759],
 ["mewithoutYou","Fox's Dream of the Log Flume",["indie","indie rock"],64,2237,55,2012,"-xO4nRqrW2I",null,466636],
-["IV Of Spades","Come Inside Of My Heart",["funk","disco"],64,2236,56,null,"9a5XX1IckIw",null,1611457],
+["IV Of Spades","Come Inside Of My Heart",["indie","indie pop"],64,2236,56,null,"9a5XX1IckIw",null,1611457],
 ["Tally Hall","Greener",["indie","rock","indie rock","indie pop"],64,2236,56,null,"sBPChW0-dA4",null,1827258],
 ["Wiki","All I Need",["hip-hop","rap"],64,2232,45,null,"6iQPVVlQrYY",null,526507],
 ["5 Seconds of Summer","Safety Pin",["pop"],64,2230,62,null,"elhg1GP_lmw",null,565880],
@@ -7316,7 +7316,7 @@
 ["Blind Guardian","Lionheart",["metal"],64,1057,63,null,"l-VYYvyPSuE",null,1818715],
 ["Bad Bunny","25/8",["reggaeton","trap","latin"],64,1055,56,null,"tPkpa_-v65M",null,521195],
 ["Roxette","Paint",["pop","rock"],64,1055,60,1988,"0OXwyJ-aOBw",null,161262],
-["beabadoobee","Memories",["indie pop","indie rock","indie"],64,1045,47,null,"fnEzPMEpSXs",null,1197870],
+["beabadoobee","Memories",["indie pop"],64,1045,47,null,"fnEzPMEpSXs",null,1197870],
 ["Verdena","Angie",["alternative rock","grunge","rock"],64,1041,50,2007,"sbZCyiTT4Bw",null,57619],
 ["Craig David","Don't Love You No More (I'm Sorry)",["r&b","pop","soul"],64,1039,59,2005,"fzU2FOEOK1E",null,307256],
 ["Frank Sinatra","Santa Claus Is Coming to Town",["jazz"],64,1037,54,1948,"RP_N7dXZvR8",null,447170],
@@ -104821,5 +104821,6 @@
 ["Fluke","Bermuda",["electronic","techno","dance"],34,394,33,1997,"Yeob3X2JCzg",null,100277],
 ["Take That","When We Were Young",["pop"],34,394,32,2011,"mWyyFEU79ZE",null,325701],
 ["Arab on Radar","Birth Control Blues",["experimental"],34,393,29,null,null,null,652732],
-["Black Noi$e","Mo(u)rning (feat. Earl Sweatshirt)",["rap","hip-hop"],34,393,31,null,null,null,953667]
+["Black Noi$e","Mo(u)rning (feat. Earl Sweatshirt)",["rap","hip-hop"],34,393,31,null,null,null,953667],
+["Funeral Mist","In Nomine Domini",["black metal"],34,393,29,null,null,null,3444976]
 ]}
