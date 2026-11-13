@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-13T03:56:44.831Z",
- "version": "bbbfd81e6e6b74b2",
+ "built_at": "2026-11-13T05:59:27.831Z",
+ "version": "418f23d05d5e4f58",
  "columns": [
   "artist",
   "song",
@@ -17,158 +17,158 @@
  "parts": [
   {
    "name": "part-000.json",
-   "songs": 100957,
-   "bytes": 10485731
+   "songs": 100956,
+   "bytes": 10485687
   },
   {
    "name": "part-001.json",
-   "songs": 104534,
-   "bytes": 10485757
+   "songs": 104507,
+   "bytes": 10485709
   },
   {
    "name": "part-002.json",
-   "songs": 110541,
-   "bytes": 10485767
+   "songs": 110405,
+   "bytes": 10485701
   },
   {
    "name": "part-003.json",
-   "songs": 114272,
-   "bytes": 10485726
+   "songs": 114271,
+   "bytes": 10485756
   },
   {
    "name": "part-004.json",
-   "songs": 114663,
-   "bytes": 10485732
+   "songs": 114659,
+   "bytes": 10485694
   },
   {
    "name": "part-005.json",
-   "songs": 114885,
-   "bytes": 10485748
+   "songs": 114888,
+   "bytes": 10485768
   },
   {
    "name": "part-006.json",
-   "songs": 116329,
-   "bytes": 10485694
+   "songs": 116326,
+   "bytes": 10485744
   },
   {
    "name": "part-007.json",
    "songs": 117636,
-   "bytes": 10485746
+   "bytes": 10485752
   },
   {
    "name": "part-008.json",
-   "songs": 117596,
-   "bytes": 10485726
+   "songs": 117598,
+   "bytes": 10485696
   },
   {
    "name": "part-009.json",
-   "songs": 117641,
-   "bytes": 10485761
+   "songs": 117638,
+   "bytes": 10485705
   },
   {
    "name": "part-010.json",
-   "songs": 117610,
-   "bytes": 10485691
+   "songs": 117607,
+   "bytes": 10485710
   },
   {
    "name": "part-011.json",
-   "songs": 116872,
-   "bytes": 10485764
+   "songs": 116871,
+   "bytes": 10485703
   },
   {
    "name": "part-012.json",
-   "songs": 118617,
-   "bytes": 10485706
+   "songs": 118636,
+   "bytes": 10485767
   },
   {
    "name": "part-013.json",
-   "songs": 117501,
-   "bytes": 10485751
+   "songs": 117470,
+   "bytes": 10485748
   },
   {
    "name": "part-014.json",
-   "songs": 117166,
-   "bytes": 10485764
+   "songs": 117180,
+   "bytes": 10485742
   },
   {
    "name": "part-015.json",
-   "songs": 118830,
-   "bytes": 10485757
+   "songs": 118828,
+   "bytes": 10485686
   },
   {
    "name": "part-016.json",
-   "songs": 117125,
-   "bytes": 10485739
+   "songs": 117128,
+   "bytes": 10485705
   },
   {
    "name": "part-017.json",
-   "songs": 117736,
-   "bytes": 10485741
+   "songs": 117739,
+   "bytes": 10485737
   },
   {
    "name": "part-018.json",
-   "songs": 116685,
-   "bytes": 10485738
+   "songs": 116698,
+   "bytes": 10485768
   },
   {
    "name": "part-019.json",
-   "songs": 117346,
-   "bytes": 10485748
+   "songs": 117328,
+   "bytes": 10485711
   },
   {
    "name": "part-020.json",
    "songs": 118733,
-   "bytes": 10485750
+   "bytes": 10485736
   },
   {
    "name": "part-021.json",
-   "songs": 116754,
-   "bytes": 10485678
+   "songs": 116777,
+   "bytes": 10485674
   },
   {
    "name": "part-022.json",
-   "songs": 117163,
-   "bytes": 10485655
+   "songs": 117131,
+   "bytes": 10485706
   },
   {
    "name": "part-023.json",
-   "songs": 116667,
-   "bytes": 10485758
+   "songs": 116661,
+   "bytes": 10485749
   },
   {
    "name": "part-024.json",
-   "songs": 116743,
-   "bytes": 10485753
+   "songs": 116762,
+   "bytes": 10485742
   },
   {
    "name": "part-025.json",
-   "songs": 117725,
-   "bytes": 10485746
+   "songs": 117697,
+   "bytes": 10485768
   },
   {
    "name": "part-026.json",
-   "songs": 116734,
-   "bytes": 10485592
+   "songs": 116758,
+   "bytes": 10485771
   },
   {
    "name": "part-027.json",
-   "songs": 118013,
-   "bytes": 10485679
+   "songs": 118010,
+   "bytes": 10485698
   },
   {
    "name": "part-028.json",
-   "songs": 112694,
-   "bytes": 10485713
+   "songs": 112709,
+   "bytes": 10485742
   },
   {
    "name": "part-029.json",
-   "songs": 116388,
-   "bytes": 10485751
+   "songs": 116383,
+   "bytes": 10485745
   },
   {
    "name": "part-030.json",
-   "songs": 24994,
-   "bytes": 2086821
+   "songs": 25160,
+   "bytes": 2101930
   }
  ]
 }
