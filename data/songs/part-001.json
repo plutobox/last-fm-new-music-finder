@@ -35977,7 +35977,7 @@
 ["VANO 3000","Running Away",["hip-hop","indie","lo-fi"],59,4013,58,null,"qboQlr7lAAk",null,950898],
 ["Niall Horan","Everywhere",["pop","folk","singer-songwriter"],59,3993,56,null,"TwG6T8AlGnE",null,2137914],
 ["Sewerslvt","Existing Everywhere",["drum and bass","electronic"],59,3900,51,null,"KusWHm4QBMA",null,2391585],
-["2ZDinizz","Beatriz",["r&b"],59,3872,7,null,null,null,3763247],
+["2ZDinizz","Beatriz",["hip-hop","rap"],59,3872,7,null,null,null,3763247],
 ["Avril Lavigne","Young & Dumb (feat. Simple Plan)",["pop","rock"],59,3847,55,null,"fpHktiqRg28",null,67403],
 ["Casey","Little Bird",["hardcore","emo"],59,3841,53,2016,"QA81hofOWBE",null,482966],
 ["Link do Zap","nunca mais vou ser clt",["trap"],59,3817,40,null,"laOGlInj2LU",null,2442349],
@@ -36602,6 +36602,7 @@
 ["Badly Drawn Boy","You Were Right",["indie","singer-songwriter","alternative","indie rock"],59,774,55,null,"vENQAquY0IY",null,749410],
 ["Dance Gavin Dance","Bloodsucker",["experimental"],59,774,55,null,"b_kU3NHbsJ0",null,2016118],
 ["Batushka","Yekteniya 2",["black metal"],59,772,56,null,null,null,2046758],
+["Miss Construction","Headshot",["electronic"],59,772,47,null,"XhtbdssFesk",null,1208635],
 ["ML Buch","Working It Out",["electronic","experimental"],59,771,50,null,"tXzGOaxNKbM",null,1510703],
 ["The Beatles","Gnik Nus",["classic rock","rock"],59,771,52,2006,"SXT2rMf6ny0",null,350204],
 ["Nyctalgia","Time changed everything",["ambient","shoegaze"],59,769,57,2009,null,null,74874],
@@ -38608,7 +38609,7 @@
 ["Sam Fender","Get You Down",["indie rock","indie","rock"],58,1538,51,2021,"o2rjDyUu1Is",null,3785],
 ["pornograffitti","THE DAY",["j-pop"],58,1532,44,null,null,null,2438969],
 ["Structures","In Pursuit Of",["metalcore","hardcore"],58,1529,52,null,"U2W_wMxc8Po",null,555214],
-["The Little Dippers","Forever",["pop"],58,1528,44,1959,"gVS_ZLBPEck",null,7389],
+["The Little Dippers","Forever",["soundtrack"],58,1528,44,1959,"gVS_ZLBPEck",null,7389],
 ["Megan Thee Stallion","Southside Forever Freestyle",["rap","hip-hop","trap"],58,1525,50,null,"HNgEf1oUEq8",null,533491],
 ["Porcelain Black","Rich Boi",["rock","pop","alternative","electronic"],58,1520,57,2009,null,null,377214],
 ["Bright Eyes","Kathy With a K's Song",["indie","folk","singer-songwriter","indie rock"],58,1514,52,null,"1CBFL4Ux6t0",null,1610257],
@@ -38873,7 +38874,7 @@
 ["Audrey","Mecklenburg",["indie"],58,945,51,2006,"4UnB-BQh8Ag",null,388220],
 ["No Use for a Name","Feels Like Home",["punk"],58,944,53,2002,"Q1eqk6y1RXA",null,469220],
 ["Spawn of Possession","Lash By Lash",["death metal"],58,942,55,null,"WBVk98LTq_k",null,1201631],
-["Shygirl","Lucky[Hymn]",["electronic","experimental"],58,941,42,2026,"29UgQ19F-Dw",null,17992],
+["Shygirl","Lucky[Hymn]",["electronic"],58,941,42,2026,"29UgQ19F-Dw",null,17992],
 ["Windir","On the Mountain of Goats",["black metal"],58,940,55,null,"TElFXbM2ceA",null,3397747],
 ["August Burns Red","Behemoth",["metalcore","hardcore"],58,938,27,2026,"nNEdurLQhf8",null,78823],
 ["Between the Trees","Darlin'",["indie","indie rock","rock"],58,936,50,null,"9ixS7-yRyz4",null,2419479],
@@ -104250,6 +104251,5 @@
 ["Stephen Marley","Mind Control",["reggae"],40,30,38,null,"fu7UNCzx8L0",null,578627],
 ["The Pogues","Navigator",["folk","punk"],40,30,39,null,"OSTk-lXf6xA",null,751672],
 ["Donna Summer","Unconditional Love",["disco","pop","dance"],40,29,39,null,"NhfOb4d-nGE",null,1498675],
-["Dream Theater","Answering the Call",["progressive rock","metal"],40,29,40,null,"PoUYX2Ospjg",null,1790817],
-["Elmore James","Shake Your Moneymaker",["blues"],40,29,38,null,null,null,543469]
+["Dream Theater","Answering the Call",["progressive rock","metal"],40,29,40,null,"PoUYX2Ospjg",null,1790817]
 ]}
