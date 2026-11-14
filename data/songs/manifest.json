@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-14T20:30:36.951Z",
- "version": "fec6ef0df8ef87a7",
+ "built_at": "2026-11-14T22:00:32.600Z",
+ "version": "dcaf4f2531c48302",
  "columns": [
   "artist",
   "song",
@@ -27,158 +27,158 @@
   },
   {
    "name": "part-002.json",
-   "songs": 107286,
-   "bytes": 10485771
+   "songs": 107140,
+   "bytes": 10485722
   },
   {
    "name": "part-003.json",
-   "songs": 114189,
-   "bytes": 10485643
+   "songs": 114198,
+   "bytes": 10485743
   },
   {
    "name": "part-004.json",
-   "songs": 114375,
-   "bytes": 10485729
+   "songs": 114378,
+   "bytes": 10485707
   },
   {
    "name": "part-005.json",
-   "songs": 114738,
-   "bytes": 10485750
+   "songs": 114733,
+   "bytes": 10485763
   },
   {
    "name": "part-006.json",
-   "songs": 114895,
-   "bytes": 10485767
+   "songs": 114888,
+   "bytes": 10485689
   },
   {
    "name": "part-007.json",
-   "songs": 117508,
-   "bytes": 10485687
+   "songs": 117511,
+   "bytes": 10485715
   },
   {
    "name": "part-008.json",
-   "songs": 117489,
-   "bytes": 10485663
+   "songs": 117483,
+   "bytes": 10485716
   },
   {
    "name": "part-009.json",
-   "songs": 117574,
-   "bytes": 10485763
+   "songs": 117581,
+   "bytes": 10485719
   },
   {
    "name": "part-010.json",
-   "songs": 117137,
-   "bytes": 10485765
+   "songs": 117135,
+   "bytes": 10485752
   },
   {
    "name": "part-011.json",
-   "songs": 117909,
-   "bytes": 10485713
+   "songs": 117917,
+   "bytes": 10485693
   },
   {
    "name": "part-012.json",
-   "songs": 117042,
-   "bytes": 10485763
+   "songs": 117040,
+   "bytes": 10485694
   },
   {
    "name": "part-013.json",
-   "songs": 118193,
-   "bytes": 10485717
+   "songs": 118191,
+   "bytes": 10485735
   },
   {
    "name": "part-014.json",
-   "songs": 117541,
-   "bytes": 10485759
+   "songs": 117530,
+   "bytes": 10485708
   },
   {
    "name": "part-015.json",
-   "songs": 116887,
-   "bytes": 10485714
+   "songs": 116897,
+   "bytes": 10485740
   },
   {
    "name": "part-016.json",
-   "songs": 118602,
-   "bytes": 10485736
+   "songs": 118587,
+   "bytes": 10485684
   },
   {
    "name": "part-017.json",
-   "songs": 117339,
-   "bytes": 10485745
+   "songs": 117360,
+   "bytes": 10485715
   },
   {
    "name": "part-018.json",
-   "songs": 117372,
-   "bytes": 10485704
+   "songs": 117356,
+   "bytes": 10485768
   },
   {
    "name": "part-019.json",
-   "songs": 117623,
-   "bytes": 10485702
+   "songs": 117632,
+   "bytes": 10485757
   },
   {
    "name": "part-020.json",
-   "songs": 115858,
-   "bytes": 10485735
+   "songs": 115856,
+   "bytes": 10485695
   },
   {
    "name": "part-021.json",
    "songs": 118588,
-   "bytes": 10485711
+   "bytes": 10485708
   },
   {
    "name": "part-022.json",
-   "songs": 118261,
-   "bytes": 10485763
+   "songs": 118266,
+   "bytes": 10485722
   },
   {
    "name": "part-023.json",
-   "songs": 116164,
-   "bytes": 10485752
+   "songs": 116158,
+   "bytes": 10485688
   },
   {
    "name": "part-024.json",
-   "songs": 117225,
-   "bytes": 10485727
+   "songs": 117230,
+   "bytes": 10485715
   },
   {
    "name": "part-025.json",
-   "songs": 116992,
-   "bytes": 10485671
+   "songs": 116995,
+   "bytes": 10485732
   },
   {
    "name": "part-026.json",
-   "songs": 116084,
-   "bytes": 10485757
+   "songs": 116088,
+   "bytes": 10485724
   },
   {
    "name": "part-027.json",
-   "songs": 117038,
-   "bytes": 10485679
+   "songs": 117052,
+   "bytes": 10485736
   },
   {
    "name": "part-028.json",
-   "songs": 116244,
-   "bytes": 10485704
+   "songs": 116263,
+   "bytes": 10485727
   },
   {
    "name": "part-029.json",
-   "songs": 118412,
-   "bytes": 10485693
+   "songs": 118357,
+   "bytes": 10485707
   },
   {
    "name": "part-030.json",
-   "songs": 112410,
-   "bytes": 10485771
+   "songs": 112425,
+   "bytes": 10485726
   },
   {
    "name": "part-031.json",
-   "songs": 117816,
-   "bytes": 10485721
+   "songs": 117801,
+   "bytes": 10485726
   },
   {
    "name": "part-032.json",
-   "songs": 907,
-   "bytes": 75691
+   "songs": 1062,
+   "bytes": 88386
   }
  ]
 }
