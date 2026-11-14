@@ -1,6 +1,6 @@
 {
- "built_at": "2026-11-14T04:51:58.018Z",
- "version": "da373a15a482cb78",
+ "built_at": "2026-11-14T06:50:21.656Z",
+ "version": "fc99d2a19ba9f85d",
  "columns": [
   "artist",
   "song",
@@ -13,7 +13,7 @@
   "spotify_id",
   "id"
  ],
- "count": 3566737,
+ "count": 3566738,
  "parts": [
   {
    "name": "part-000.json",
@@ -22,8 +22,8 @@
   },
   {
    "name": "part-001.json",
-   "songs": 104250,
-   "bytes": 10485693
+   "songs": 104251,
+   "bytes": 10485765
   },
   {
    "name": "part-002.json",
