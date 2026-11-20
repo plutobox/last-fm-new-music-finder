@@ -21,6 +21,8 @@ trait AsyncBuffer extends js.Object
 trait UrlOptions extends js.Object:
   val url: String
   val byteLength: Double
+  // Used instead of the browser's fetch for every request.
+  val fetch: js.Function2[js.Any, js.UndefOr[js.Any], js.Promise[org.scalajs.dom.Response]]
 
 trait MetadataOptions extends js.Object:
   val initialFetchSize: Int

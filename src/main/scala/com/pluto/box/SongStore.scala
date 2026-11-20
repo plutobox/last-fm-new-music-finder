@@ -1,5 +1,7 @@
 package com.pluto.box
 
+import org.scalajs.dom
+
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 import scala.scalajs.concurrent.JSExecutionContext.Implicits.queue
@@ -84,7 +86,11 @@ final class SongStore(catalog: Catalog, dataRoot: String):
       file.name, {
         val address = s"$dataRoot/songs/${file.name}?v=${catalog.version}"
         val future = for
-          buffer <- Hyparquet.asyncBufferFromUrl(new UrlOptions { val url = address; val byteLength = file.bytes }).toFuture
+          buffer <- Hyparquet.asyncBufferFromUrl(new UrlOptions {
+            val url = address
+            val byteLength = file.bytes
+            val fetch = SongStore.fetchWithRetries
+          }).toFuture
           metadata <- Hyparquet.parquetMetadataAsync(buffer, new MetadataOptions { val initialFetchSize = 65536 }).toFuture
         yield new OpenFile(file, catalog.files.indexOf(file), buffer, metadata)
         // A failed open is tried again next time, rather than remembered.
@@ -175,6 +181,31 @@ object SongStore:
     else value.asInstanceOf[Double]
 
   def isMissing(value: Any): Boolean = value == null || js.isUndefined(value)
+
+  // A search can make hundreds of requests, and on a phone's connection one of them sometimes fails ("Load failed"
+  // in Safari). Each is tried up to 3 more times, after 0.5, 1.5 and 3 seconds, before the search gives up.
+  private val retryDelays = Seq(500, 1500, 3000)
+
+  private def pause(ms: Int): Future[Unit] =
+    val done = Promise[Unit]()
+    js.timers.setTimeout(ms.toDouble)(done.success(()))
+    done.future
+
+  val fetchWithRetries: js.Function2[js.Any, js.UndefOr[js.Any], js.Promise[dom.Response]] = (input, init) =>
+    import scala.scalajs.js.JSConverters.*
+    def attempt(delays: Seq[Int]): Future[dom.Response] =
+      val request = dom.fetch(
+        input.asInstanceOf[dom.RequestInfo],
+        init.getOrElse(js.Object()).asInstanceOf[dom.RequestInit]
+      ).toFuture
+      delays match
+        case Nil => request
+        case wait +: later =>
+          request
+            .transformWith:
+              case Success(response) if response.status < 500 => Future.successful(response)
+              case _ => pause(wait).flatMap(_ => attempt(later))
+    attempt(retryDelays).toJSPromise
 
   def song(row: js.Dictionary[js.Any]): Song =
     def optional(name: String) = row.get(name).filterNot(isMissing)
