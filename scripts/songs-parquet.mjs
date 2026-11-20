@@ -19,12 +19,14 @@ export const PARQUET_FILE = /^listeners-[0-9a-z-]+\.parquet$/;
 
 const sqlString = (s) => `'${s.replaceAll("'", "''")}'`;
 
-// rows: arrays in the order of columns. Writes the files into outDir, replacing earlier ones, and returns the list
-// for the manifest, from the most listeners to the fewest.
-export async function writeSongParquet(rows, columns, outDir, workDir) {
+// lines: each song as a JSON array in the order of columns. They're parsed one at a time, so the table is never held
+// twice. Writes the files into outDir, replacing earlier ones, and returns the list for the manifest, from the most
+// listeners to the fewest.
+export async function writeSongParquet(lines, columns, outDir, workDir) {
   const jsonPath = path.join(workDir, "songs.ndjson");
   const stream = fs.createWriteStream(jsonPath);
-  for (const row of rows) {
+  for (const line of lines) {
+    const row = JSON.parse(line);
     const record = Object.fromEntries(columns.map((c, i) => [c, row[i]]));
     if (!stream.write(`${JSON.stringify(record)}\n`)) await new Promise((resolve) => stream.once("drain", resolve));
   }

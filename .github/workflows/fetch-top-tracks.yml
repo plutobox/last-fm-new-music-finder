@@ -235,8 +235,10 @@ jobs:
       - name: Build the public songs files (no usernames or per-user data)
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
+        # Node's default heap (about 4 GB) is too small for millions of songs. 8 GB leaves room on the 16 GB runner
+        # for the up to 4 GB DuckDB uses to write the Parquet files.
         run: |
-          node feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs --part-mb 10
+          node --max-old-space-size=8192 feature/scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs --part-mb 10
           # Replaced by the split files above.
           rm -f pages/data/songs.json
 

@@ -88,6 +88,8 @@ const songGenres = collectGenres(db.prepare(`
 const songColumns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
 const optionalSongColumn = (name) => (songColumns.includes(name) ? `s.${name}` : "NULL");
 
+// Streamed rather than loaded at once: the table has millions of songs, and only one copy of it (the JSON lines
+// below) fits comfortably in memory alongside everything else.
 const candidates = db.prepare(`
   WITH listeners AS (
     SELECT song_id, count(*) AS n
@@ -111,23 +113,22 @@ const candidates = db.prepare(`
   LEFT JOIN loved h ON h.song_id = l.song_id
   WHERE l.n >= ?
   ORDER BY l.n DESC, plays DESC, a.name, s.name
-`).all(MIN_LISTENERS);
-db.close();
-if (encrypted) fs.rmSync(localDb);
+`).iterate(MIN_LISTENERS);
 
-const rows = [];
 const lines = [];
+const genreCounts = new Map();
 let untagged = 0, fromSong = 0, fromArtist = 0;
 for (const c of candidates) {
   // A song's own tags win. Without any usable ones, it takes its artist's.
   const own = songGenres.get(c.song_id);
   const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
-  const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id, c.song_id];
-  rows.push(row);
-  lines.push(JSON.stringify(row));
+  lines.push(JSON.stringify([c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id, c.song_id]));
+  for (const g of genres) genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
   if (own) fromSong++; else fromArtist++;
 }
+db.close();
+if (encrypted) fs.rmSync(localDb);
 
 const hash = crypto.createHash("sha256");
 for (const line of lines) hash.update(line).update("\n");
@@ -161,13 +162,11 @@ if (changed) {
   if (current.length) writePart(current);
 }
 const parquet = writeParquet
-  ? { format: PARQUET_FORMAT, files: await writeSongParquet(rows, COLUMNS, out, workDir) }
+  ? { format: PARQUET_FORMAT, files: await writeSongParquet(lines, COLUMNS, out, workDir) }
   : previous?.parquet;
 fs.rmSync(workDir, { recursive: true, force: true });
 if (changed || writeParquet) {
   // Every genre with its song count, biggest first, so the site can list them without reading every song.
-  const genreCounts = new Map();
-  for (const row of rows) for (const g of row[2]) genreCounts.set(g, (genreCounts.get(g) ?? 0) + 1);
   const genres = [...genreCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   // Written last, so a stopped run can't leave a manifest pointing at files that aren't there yet.
   const builtAt = changed ? new Date().toISOString() : previous.built_at;
