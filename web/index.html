@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Find ur next earworm</title>
+    <title>Find your next earworm</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet" />
@@ -130,7 +130,19 @@
 
       .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; margin-bottom: 1rem; }
       .controls .field { flex: 1 1 11rem; max-width: 16rem; }
-      .summary { margin: 0 0 0.75rem; color: var(--soft); }
+      .summary { margin: 0 0 0.75rem; color: var(--soft); font-variant-numeric: tabular-nums; }
+      .summary .count {
+        margin-left: 0.5rem;
+        min-height: 2.75rem;
+        padding: 0.25rem 0.75rem;
+        background: transparent;
+        border: 2px solid var(--line);
+        border-radius: 0.375rem;
+        color: var(--blue);
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .summary .count:hover { border-color: var(--blue); }
       .empty { padding: 2rem 0; }
       .empty p { margin-top: 0; }
 
@@ -290,6 +302,10 @@
       .player-artist { color: var(--soft); }
       .player-volume { width: 6rem; min-height: 1rem; padding: 0; border: 0; background: transparent; accent-color: var(--blue); }
 
+      .results table { transition: opacity 0.2s; }
+      .results.is-searching table { opacity: 0.55; }
+      @media (prefers-reduced-motion: reduce) { .results table { transition: none; } }
+
       @media (max-width: 52rem) {
         .finder { padding-bottom: 9rem; }
         .player-bar { grid-template-columns: minmax(0, 1fr) auto; }
@@ -321,8 +337,19 @@
   </head>
   <body>
     <div id="app"></div>
-    <!-- relative path so it works under /last-fm-new-music-finder/<branch>/ -->
-    <!-- CI replaces BUILD_ID, so a browser can't pair a new page with a cached older script -->
-    <script src="./main.js?v=BUILD_ID"></script>
+    <!-- hyparquet reads the song files over range requests in plain JavaScript (Main.scala's Hyparquet facade), and
+         main.js loads only once it's there. Relative path so it works under /last-fm-new-music-finder/<branch>/.
+         CI replaces BUILD_ID, so a browser can't pair a new page with a cached older script. -->
+    <script type="module">
+      try {
+        window.hyparquet = await import("https://cdn.jsdelivr.net/npm/hyparquet@1.32.0/+esm");
+        const app = document.createElement("script");
+        app.src = "./main.js?v=BUILD_ID";
+        document.body.append(app);
+      } catch (e) {
+        document.getElementById("app").innerHTML =
+          '<div class="page status"><h1>Find your next earworm</h1><p>Couldn\'t load the song reader. Check your connection and reload the page.</p></div>';
+      }
+    </script>
   </body>
 </html>
