@@ -1,15 +1,20 @@
-// Writes the public song table as Parquet files, one band of listener counts per file, so a browser running DuckDB
-// can read only the files and row groups a query needs (e.g. the default "most listeners" view reads only the top
-// band). A band bigger than MAX_FILE_BYTES is split into numbered files. Within each file, rows run from most
-// listeners to fewest, then most plays, so each 100,000-row group's min/max stats let readers skip it.
+// Writes the public song table as Parquet files, one band of listener counts per file, so the site can read only the
+// files and row groups a query needs (e.g. the default "most listeners" view reads only the top band). The site
+// reads them with hyparquet, a plain JavaScript reader, which decodes Snappy itself, hence Snappy rather than zstd.
+// A band bigger than MAX_FILE_BYTES is split into numbered files. Within each file, rows run from most listeners to
+// fewest, then most plays, so each row group's min/max stats let the site skip it.
 import fs from "node:fs";
 import path from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 
 // [lowest, highest] listeners per band; null means no upper limit. Every song has at least 2 listeners.
 export const BANDS = [[100, null], [20, 99], [10, 19], [5, 9], [3, 4], [2, 2]];
+// Bumped whenever the files' layout changes, so the export rewrites files from an older layout.
+export const PARQUET_FORMAT = 2;
 const MAX_FILE_BYTES = "40MB"; // GitHub warns about files over 50 MB and refuses them over 100 MB
-const ROW_GROUP_SIZE = 100000;
+// Small enough that the default view reads little more than the songs it shows, big enough that a full scan isn't
+// hundreds of requests.
+const ROW_GROUP_SIZE = 20000;
 export const PARQUET_FILE = /^listeners-[0-9a-z-]+\.parquet$/;
 
 const sqlString = (s) => `'${s.replaceAll("'", "''")}'`;
@@ -35,7 +40,7 @@ export async function writeSongParquet(rows, columns, outDir, workDir) {
   try {
     await con.run(`
       CREATE TABLE songs AS SELECT * FROM read_json(${sqlString(jsonPath)}, format = 'newline_delimited', columns = {
-        artist: 'VARCHAR', song: 'VARCHAR', genres: 'VARCHAR[]', listeners: 'INTEGER', plays: 'BIGINT',
+        artist: 'VARCHAR', song: 'VARCHAR', genres: 'VARCHAR[]', listeners: 'INTEGER', plays: 'INTEGER',
         loved_by: 'INTEGER', year: 'SMALLINT', youtube_id: 'VARCHAR', spotify_id: 'VARCHAR', id: 'INTEGER'
       })
     `);
@@ -50,7 +55,7 @@ export async function writeSongParquet(rows, columns, outDir, workDir) {
       const where = high === null ? `listeners >= ${low}` : `listeners BETWEEN ${low} AND ${high}`;
       await con.run(`
         COPY (SELECT ${columns.join(", ")} FROM songs WHERE ${where} ORDER BY listeners DESC, plays DESC, artist, song)
-        TO ${sqlString(bandDir)} (FORMAT parquet, CODEC 'zstd', ROW_GROUP_SIZE ${ROW_GROUP_SIZE},
+        TO ${sqlString(bandDir)} (FORMAT parquet, CODEC 'snappy', ROW_GROUP_SIZE ${ROW_GROUP_SIZE},
           FILE_SIZE_BYTES '${MAX_FILE_BYTES}', FILENAME_PATTERN 'part_{i}')
       `);
       // DuckDB numbers the split files in the order it wrote them.
