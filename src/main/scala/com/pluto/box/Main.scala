@@ -31,25 +31,37 @@ private def fetchIfThere(url: String): Future[Option[String]] =
     else if response.ok then response.text().toFuture.map(Some(_))
     else throw new Exception(s"the server answered ${response.status}")
 
-// The manifest is fetched fresh, and its build time keeps a browser from using a cached older file. A song with no
-// file or no entry simply has no matches yet. Matches no longer in the public list are left out.
-private def loadMatches(catalog: Catalog, store: SongStore, id: Int): Future[Vector[SongMatch]] =
-  fetchIfThere(s"$dataRoot/similar/manifest.json?t=${js.Date.now().toLong}").flatMap:
-    case None => Future.successful(Vector.empty)
-    case Some(text) =>
-      val (builtAt, shards) = Songs.parseMatchFiles(text)
+// The precomputed matches in data/similar/, split into files by song ID. The manifest is fetched fresh once per list,
+// and its build time keeps a browser from using a cached older file. A song with no file or no entry simply has no
+// matches yet. Matches no longer in the public list are left out.
+private final class MatchFiles(catalog: Catalog, store: SongStore, builtAt: String, shards: Int):
+  def matches(song: Song): Future[Vector[SongMatch]] =
+    song.id.fold(Future.successful(Vector.empty[SongMatch])): id =>
       val name = s"00${id % shards}".takeRight(3)
       fetchIfThere(s"$dataRoot/similar/$name.json?v=${js.URIUtils.encodeURIComponent(builtAt)}").flatMap:
         case None => Future.successful(Vector.empty)
-        case Some(matchText) =>
-          val pairs = Songs.parseMatches(matchText, id)
+        case Some(text) =>
+          val pairs = Songs.parseMatches(text, id)
           Search.byIds(store, catalog, pairs.map(_._1)).map: songs =>
             pairs.flatMap((matchId, shared) => songs.get(matchId).map(SongMatch(_, shared)))
 
-private enum MatchLoad:
-  case Loading
-  case Failed(message: String)
-  case Ready(matches: Vector[SongMatch])
+private object MatchFiles:
+  def open(catalog: Catalog, store: SongStore): Future[Option[MatchFiles]] =
+    fetchIfThere(s"$dataRoot/similar/manifest.json?t=${js.Date.now().toLong}").map(_.map: text =>
+      val (builtAt, shards) = Songs.parseMatchFiles(text)
+      new MatchFiles(catalog, store, builtAt, shards))
+
+// One song in an "If you like" list. via is the song it was found through, for songs past the first set: they're
+// matches of the matches.
+private final case class MatchItem(song: Song, sharedListeners: Int, via: Option[Song])
+
+private final case class MatchList(
+  items: Vector[MatchItem] = Vector.empty,
+  loading: Boolean = true,
+  // No song left in the list whose matches haven't been added.
+  done: Boolean = false,
+  failure: Option[String] = None
+)
 
 private def formatCount(n: Int): String =
   n.toString.reverse.grouped(3).mkString(",").reverse
@@ -289,7 +301,8 @@ private def finder(catalog: Catalog, store: SongStore) =
       )
   )
 
-  def playButton(s: Song, queue: Vector[Song]) =
+  // queue is read when the button is pressed, so a list that grows plays through its newest songs too.
+  def playButton(s: Song, queue: => Vector[Song]) =
     div(
       child <-- player.unplayable.signal.map(_ => s.youtubeId.exists(player.unplayable.now())).distinct.map: known =>
         if s.youtubeId.isDefined && !known then
@@ -312,32 +325,135 @@ private def finder(catalog: Catalog, store: SongStore) =
           )
     )
 
-  // The song whose matches are showing, if any.
+  // The song whose matches are showing, if any, and the list so far. The first set is the song's own matches; each
+  // later set adds the matches of the next song in the list that hasn't been looked at, skipping songs already
+  // listed, so the list keeps going outward from the song for as long as you scroll.
   val matchesFor = Var[Option[Song]](None)
-  val matchLoad = Var[MatchLoad](MatchLoad.Loading)
+  val matchList = Var(MatchList())
   var openedFrom: Option[dom.HTMLElement] = None
+  var matchFiles: Future[Option[MatchFiles]] = Future.successful(None)
+  var matchSession = 0
+  var nextToExpand = 0
+  val seen = scala.collection.mutable.Set[Int]()
+  // Set by the list once it's showing: loads more if the end of the list is still in view.
+  var fillIfShort: () => Unit = () => ()
 
-  def showMatches(s: Song, id: Int): Unit =
+  // Each set adds at least this many songs, unless the list runs out.
+  val matchesPerSet = 10
+
+  def addMatches(found: Vector[SongMatch], via: Option[Song]): Vector[MatchItem] =
+    found.flatMap: m =>
+      m.song.id.filter(seen.add).map(_ => MatchItem(m.song, m.sharedListeners, via))
+
+  def loadMoreMatches(): Unit =
+    val list = matchList.now()
+    if !list.loading && !list.done && list.failure.isEmpty then
+      val session = matchSession
+      matchList.update(_.copy(loading = true))
+      // Looks at songs one at a time until the set is big enough or nothing is left to look at.
+      def step(added: Vector[MatchItem]): Future[(Vector[MatchItem], Boolean)] =
+        val items = matchList.now().items ++ added
+        if added.size >= matchesPerSet then Future.successful((added, false))
+        else if nextToExpand >= items.size then Future.successful((added, true))
+        else
+          val from = items(nextToExpand).song
+          nextToExpand += 1
+          matchFiles.flatMap(_.fold(Future.successful(Vector.empty[SongMatch]))(_.matches(from))).flatMap: found =>
+            if session != matchSession then Future.failed(new Cancelled)
+            else step(added ++ addMatches(found, Some(from)))
+      step(Vector.empty).onComplete:
+        case Success((added, done)) if session == matchSession =>
+          matchList.update(l => l.copy(items = l.items ++ added, loading = false, done = done))
+          fillIfShort()
+        case Failure(e: Cancelled) => ()
+        case Failure(e) if session == matchSession =>
+          matchList.update(_.copy(loading = false, failure = Some(e.getMessage)))
+        case _ => ()
+
+  def showMatches(s: Song): Unit =
     if matchesFor.now().isEmpty then
       openedFrom = Option(dom.document.activeElement).collect { case e: dom.HTMLElement => e }
+    matchSession += 1
+    val session = matchSession
+    nextToExpand = 0
+    seen.clear()
+    s.id.foreach(seen.add)
     matchesFor.set(Some(s))
-    matchLoad.set(MatchLoad.Loading)
-    loadMatches(catalog, store, id).onComplete: outcome =>
-      // Ignored if another song was chosen, or the box closed, while this one loaded.
-      if matchesFor.now().contains(s) then
-        outcome match
-          case Success(matches) => matchLoad.set(MatchLoad.Ready(matches))
-          case Failure(e)       => matchLoad.set(MatchLoad.Failed(e.getMessage))
+    matchList.set(MatchList())
+    matchFiles = MatchFiles.open(catalog, store)
+    matchFiles
+      .flatMap(_.fold(Future.successful(Vector.empty[SongMatch]))(_.matches(s)))
+      .onComplete:
+        // Ignored if another song was chosen, or the box closed, while this one loaded.
+        case Success(found) if session == matchSession =>
+          matchList.set(MatchList(items = addMatches(found, None), loading = false, done = found.isEmpty))
+        case Failure(e) if session == matchSession =>
+          matchList.set(MatchList(loading = false, failure = Some(e.getMessage)))
+        case _ => ()
 
   def closeMatches(): Unit =
     if matchesFor.now().isDefined then
+      matchSession += 1
       matchesFor.set(None)
       openedFrom.foreach(_.focus())
       openedFrom = None
 
   def likeButton(s: Song) =
-    s.id.map: id =>
-      button(typ := "button", cls := "like", "Like this song? Click here", onClick --> (_ => showMatches(s, id)))
+    s.id.map: _ =>
+      button(typ := "button", cls := "like", "Like this song? Click here", onClick --> (_ => showMatches(s)))
+
+  def matchRow(item: MatchItem) =
+    val m = item.song
+    li(
+      cls("is-playing") <-- player.current.signal.map(_.contains(m)),
+      playButton(m, matchList.now().items.map(_.song)),
+      div(
+        cls := "track",
+        a(href := m.url, target := "_blank", rel := "noopener", cls := "title", m.title),
+        div(cls := "artist", m.year.fold(m.artist)(y => s"${m.artist}, $y")),
+        div(
+          cls := "tags",
+          item.via.fold(s"${formatCount(item.sharedListeners)} listeners in common")(v =>
+            s"${formatCount(item.sharedListeners)} listeners in common with ${v.title}"),
+          s" · ${m.genres.mkString(", ")}"
+        ),
+        likeButton(m)
+      )
+    )
+
+  // Loads the next set when the end of the list comes within a screen of view, and again after a set that still
+  // leaves the end in view. The button does the same for keyboards and screen readers.
+  def moreMatches() =
+    div(
+      cls := "matches-more",
+      onMountUnmountCallbackWithState(
+        mount = ctx =>
+          val sentinel = ctx.thisNode.ref
+          val scroller = sentinel.closest(".matches").asInstanceOf[dom.HTMLElement]
+          def nearEnd() =
+            sentinel.getBoundingClientRect().top < scroller.getBoundingClientRect().bottom + scroller.clientHeight
+          fillIfShort = () => if nearEnd() then loadMoreMatches()
+          val observer = new dom.IntersectionObserver(
+            (entries, _) => if entries.exists(_.isIntersecting) then loadMoreMatches(),
+            new dom.IntersectionObserverInit {
+              root = scroller
+              rootMargin = "100% 0px"
+            }
+          )
+          observer.observe(sentinel)
+          observer
+        ,
+        unmount = (_, observer) =>
+          observer.foreach(_.disconnect())
+          fillIfShort = () => ()
+      ),
+      child <-- matchList.signal.map(l => (l.loading, l.done, l.failure)).distinct.map:
+        case (_, _, Some(message)) => p(s"Couldn't load more songs: $message.")
+        case (true, _, _)          => p("Finding more songs...")
+        case (_, true, _)          => p("That's every song we can find from here.")
+        case _ =>
+          button(typ := "button", cls := "reset", "Show more songs", onClick --> (_ => loadMoreMatches()))
+    )
 
   // Not a true modal, so the player bar above it keeps working while you listen through the results.
   val matchesBox = div(
@@ -363,30 +479,23 @@ private def finder(catalog: Catalog, store: SongStore) =
               onClick --> (_ => closeMatches())
             )
           ),
-          child <-- matchLoad.signal.map:
-            case MatchLoad.Loading         => p("Finding songs...")
-            case MatchLoad.Failed(message) => p(s"Couldn't load the matches: $message.")
-            case MatchLoad.Ready(matches) if matches.isEmpty =>
+          // Shown once the first set has loaded; it stays put as later sets are added below it.
+          child <-- matchList.signal.map(l => (l.items.isEmpty, l.loading, l.failure)).distinct.map:
+            case (true, true, _)           => p("Finding songs...")
+            case (true, _, Some(message))  => p(s"Couldn't load the matches: $message.")
+            case (true, false, None) =>
               p("No matches for this song yet. It needs at least 3 listeners who share other songs, and matches update weekly.")
-            case MatchLoad.Ready(matches) =>
-              div(
-                p(cls := "hint", "Most likely first, based on what this song's listeners also listen to or love."),
-                ol(
-                  cls := "matches-list",
-                  matches.map: m =>
-                    li(
-                      cls("is-playing") <-- player.current.signal.map(_.contains(m.song)),
-                      playButton(m.song, matches.map(_.song)),
-                      div(
-                        cls := "track",
-                        a(href := m.song.url, target := "_blank", rel := "noopener", cls := "title", m.song.title),
-                        div(cls := "artist", m.song.year.fold(m.song.artist)(y => s"${m.song.artist}, $y")),
-                        div(cls := "tags", s"${formatCount(m.sharedListeners)} listeners in common · ${m.song.genres.mkString(", ")}"),
-                        likeButton(m.song)
-                      )
-                    )
-                )
-              )
+            case (false, _, _) =>
+              p(
+                cls := "hint",
+                "Most likely first, based on what this song's listeners also listen to or love. Scroll for more: after these come songs that fans of these songs like."
+              ),
+          ol(
+            cls := "matches-list",
+            children <-- matchList.signal.map(_.items).split(_.song.id)((_, item, _) => matchRow(item))
+          ),
+          child.maybe <-- matchList.signal.map(_.items.nonEmpty).distinct.map: shown =>
+            Option.when(shown)(moreMatches())
         )
       )
     ),
