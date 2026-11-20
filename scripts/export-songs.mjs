@@ -1,9 +1,8 @@
-// Builds the public, unencrypted data: one flat table of songs with their genres and aggregate counts, split into
-// numbered files in one folder, plus a manifest.json that lists them. The website loads the files and joins them.
-// The same table is also written as Parquet files, one band of listener counts each (songs-parquet.mjs), which the
-// manifest lists under "parquet", for a site that queries them with DuckDB instead of loading everything.
+// Builds the public, unencrypted data: one flat table of songs with their genres and aggregate counts, as Parquet
+// files, one band of listener counts each (songs-parquet.mjs), plus a manifest.json that lists them. The website reads
+// only the parts of the files a search needs, and export-similar.mjs reads them too.
 // Only reads the database, which it opens read-only. No usernames, profiles or per-user data go in.
-// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs [--part-mb 10] [--no-parquet]
+// Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs
 //
 // Songs need at least MIN_LISTENERS listeners, so a row can't simply be one person's listening. An unchanged table
 // leaves the files untouched, so the workflow has nothing to commit.
@@ -50,7 +49,6 @@ const GENRES = Object.fromEntries(Object.entries({
 
 const dbPath = args.db ?? "data/users.db";
 const out = args.out ?? "data/songs";
-const partBytes = Number(args["part-mb"] ?? 10) * 1024 * 1024;
 const encrypted = dbPath.endsWith(".age");
 const ageIdentity = process.env.LAST_FM_AGE_IDENTITY?.trim();
 if (encrypted && !ageIdentity) throw new Error("LAST_FM_AGE_IDENTITY is not set but --db is a .age file");
@@ -137,49 +135,31 @@ const version = hash.digest("hex").slice(0, 16);
 const manifestPath = path.join(out, "manifest.json");
 const previous = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
 const changed = previous?.version !== version;
-// --no-parquet skips them, for a copy only scripts read. An unchanged table still gets Parquet files if it has none
-// yet, or only ones in an older layout.
-const withParquet = !("no-parquet" in args);
-const writeParquet = withParquet && (changed || previous?.parquet?.format !== PARQUET_FORMAT || !previous?.genres);
-let parts = previous?.parts;
-if (changed) {
-  parts = [];
-  const writePart = (partLines) => {
-    const name = `part-${String(parts.length).padStart(3, "0")}.json`;
-    const text = `{"rows":[\n${partLines.join(",\n")}\n]}\n`;
-    fs.writeFileSync(path.join(out, name), text);
-    parts.push({ name, songs: partLines.length, bytes: Buffer.byteLength(text) });
-  };
+// An unchanged table is still rewritten if its files use an older layout, or its manifest still lists the JSON files
+// the site used to load.
+const rewrite = changed || previous?.parquet?.format !== PARQUET_FORMAT || !previous?.genres || previous?.parts !== undefined;
+if (rewrite) {
   fs.mkdirSync(out, { recursive: true });
-  for (const f of fs.readdirSync(out)) if (/^part-\d+\.json$/.test(f)) fs.rmSync(path.join(out, f));
-  let current = [], size = 0;
-  for (const line of lines) {
-    const lineBytes = Buffer.byteLength(line) + 2;
-    if (current.length && size + lineBytes > partBytes) { writePart(current); current = []; size = 0; }
-    current.push(line);
-    size += lineBytes;
-  }
-  if (current.length) writePart(current);
-}
-const parquet = writeParquet
-  ? { format: PARQUET_FORMAT, files: await writeSongParquet(lines, COLUMNS, out, workDir) }
-  : previous?.parquet;
-fs.rmSync(workDir, { recursive: true, force: true });
-if (changed || writeParquet) {
+  const parquet = { format: PARQUET_FORMAT, files: await writeSongParquet(lines, COLUMNS, out, workDir) };
   // Every genre with its song count, biggest first, so the site can list them without reading every song.
   const genres = [...genreCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   // Written last, so a stopped run can't leave a manifest pointing at files that aren't there yet.
   const builtAt = changed ? new Date().toISOString() : previous.built_at;
-  const manifest = { built_at: builtAt, version, columns: COLUMNS, count: lines.length, genres, parts, parquet };
+  const manifest = { built_at: builtAt, version, columns: COLUMNS, count: lines.length, genres, parquet };
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 1)}\n`);
+}
+fs.rmSync(workDir, { recursive: true, force: true });
+
+// The JSON copy of the table is no longer published: the site and export-similar.mjs read the Parquet files.
+let removed = 0;
+for (const f of fs.existsSync(out) ? fs.readdirSync(out) : []) {
+  if (/^part-\d+\.json$/.test(f)) { fs.rmSync(path.join(out, f)); removed++; }
 }
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 const megabytes = (files) => (files.reduce((sum, p) => sum + p.bytes, 0) / 1048576).toFixed(2);
 console.log(
-  `${changed ? "Wrote" : "No change to"} ${out}: ${manifest.count} songs in ${manifest.parts.length} JSON file(s), ${megabytes(manifest.parts)} MB` +
-  (manifest.parquet
-    ? `${writeParquet ? ", wrote" : ", kept"} ${manifest.parquet.files.length} Parquet file(s), ${megabytes(manifest.parquet.files)} MB. `
-    : ", no Parquet files. ") +
+  `${rewrite ? "Wrote" : "No change to"} ${out}: ${manifest.count} songs in ${manifest.parquet.files.length} Parquet ` +
+  `file(s), ${megabytes(manifest.parquet.files)} MB${removed ? `. Removed ${removed} old JSON file(s)` : ""}. ` +
   `Genres from the song ${fromSong}, from the artist ${fromArtist}. Left out: ${untagged} with no known genre yet.`
 );

@@ -43,7 +43,7 @@ jobs:
       - name: List the public songs, so matches only use those
         env:
           LAST_FM_AGE_IDENTITY: ${{ secrets.LAST_FM_AGE_IDENTITY }}
-        run: node --max-old-space-size=12288 feature/scripts/export-songs.mjs --db db/users.db.age --out public-songs --no-parquet
+        run: node --max-old-space-size=8192 feature/scripts/export-songs.mjs --db db/users.db.age --out public-songs
 
       # Song IDs and counts of shared listeners only. No usernames or per-user data.
       - name: Build the matches

@@ -5,7 +5,7 @@
 //          [--songs "Mallrat - Groceries,Karma Police"] [--minutes 300] [--min-listeners 3] [--top 20]
 //          [--min-shared 3] [--max-per-artist 3] [--max-user-songs 10000] [--shards 512]
 //
-// --songs-dir is a folder written by export-songs.mjs: only songs in it are matched or shown. --songs (or the SONGS env
+// --songs-dir is a folder written by export-songs.mjs, read from its Parquet files: only songs in it are matched or shown. --songs (or the SONGS env
 // var) limits the build to those songs, each "Artist - Song" or a title for every song with that title, and ignores
 // --min-listeners. Otherwise it goes through songs with at least --min-listeners listeners, most listeners first, until
 // done or --minutes runs out. merge-similar.mjs publishes the output, keeping earlier results for any song not rebuilt.
@@ -16,6 +16,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { DuckDBInstance } from "@duckdb/node-api";
 import { encryptedDbExists, readEncryptedDb } from "./db-store.mjs";
 
 const args = Object.fromEntries(
@@ -47,13 +48,11 @@ const log = (message) => console.log(`[${Math.round((Date.now() - started) / 100
 
 // ---- The public songs -------------------------------------------------------------------------
 
+// The Parquet files export-songs.mjs wrote, read a chunk at a time, most listeners first.
 const manifest = JSON.parse(fs.readFileSync(path.join(songsDir, "manifest.json"), "utf8"));
-const column = (name) => {
-  const i = manifest.columns.indexOf(name);
-  if (i < 0) throw new Error(`${songsDir} has no "${name}" column`);
-  return i;
-};
-const [idColumn, artistColumn, songColumn, listenersColumn] = ["id", "artist", "song", "listeners"].map(column);
+if (!manifest.parquet?.files?.length) throw new Error(`${songsDir} has no Parquet song files`);
+const sqlString = (s) => `'${s.replaceAll("'", "''")}'`;
+const fileList = manifest.parquet.files.map((f) => sqlString(path.join(songsDir, f.name))).join(", ");
 
 const count = manifest.count;
 const ids = new Int32Array(count);
@@ -63,18 +62,25 @@ const artistNumbers = new Map();
 const byName = new Map(); // lowercase title, or lowercase "artist - title" -> song positions
 const addName = (name, i) => { const key = name.toLowerCase(); const list = byName.get(key); if (list) list.push(i); else byName.set(key, [i]); };
 let total = 0, maxId = 0;
-for (const part of manifest.parts) {
-  for (const r of JSON.parse(fs.readFileSync(path.join(songsDir, part.name), "utf8")).rows) {
+const duck = await DuckDBInstance.create(":memory:", { memory_limit: "2GB", threads: "2" });
+const songsConnection = await duck.connect();
+const songsResult = await songsConnection.stream(
+  `SELECT id, artist, song, listeners FROM read_parquet([${fileList}]) ORDER BY listeners DESC, plays DESC, artist, song`
+);
+for (let chunk = await songsResult.fetchChunk(); chunk && chunk.rowCount > 0; chunk = await songsResult.fetchChunk()) {
+  for (const [id, artist, song, listeners] of chunk.getRows()) {
     const i = total++;
-    ids[i] = r[idColumn];
-    if (r[idColumn] > maxId) maxId = r[idColumn];
-    publicListeners[i] = r[listenersColumn];
-    const artist = r[artistColumn];
+    ids[i] = id;
+    if (id > maxId) maxId = id;
+    publicListeners[i] = listeners;
     if (!artistNumbers.has(artist)) artistNumbers.set(artist, artistNumbers.size);
     artists[i] = artistNumbers.get(artist);
-    if (SONGS) { addName(r[songColumn], i); addName(`${artist} - ${r[songColumn]}`, i); }
+    if (SONGS) { addName(song, i); addName(`${artist} - ${song}`, i); }
   }
 }
+songsConnection.closeSync();
+duck.closeSync();
+if (total !== count) throw new Error(`${songsDir} lists ${count} songs but its files hold ${total}`);
 const positionOfId = new Int32Array(maxId + 1).fill(-1);
 for (let i = 0; i < total; i++) positionOfId[ids[i]] = i;
 log(`public songs: ${total}`);
@@ -151,7 +157,7 @@ if (SONGS) {
   }
   targets = [...chosen];
 } else {
-  // The public files are already most listeners first.
+  // The songs were read most listeners first.
   targets = [];
   for (let i = 0; i < total; i++) if (publicListeners[i] >= MIN_LISTENERS) targets.push(i);
 }
