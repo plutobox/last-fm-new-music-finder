@@ -240,10 +240,5 @@ jobs:
           # Replaced by the split files above.
           rm -f pages/data/songs.json
 
-      - name: Commit the songs files to gh-pages
-        uses: EndBug/add-and-commit@v11
-        with:
-          cwd: pages
-          add: "data"
-          message: "Update public songs files"
-          push: origin gh-pages --set-upstream
+      - name: Publish the songs files to gh-pages (replaces the branch, so it keeps no history)
+        run: bash feature/scripts/publish-pages.sh pages "Update public songs files"

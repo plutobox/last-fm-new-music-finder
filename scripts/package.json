@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@duckdb/node-api": "2.0.0-r.1",
     "age-encryption": "^0.3.1"
   }
 }

@@ -1,5 +1,7 @@
 // Builds the public, unencrypted data: one flat table of songs with their genres and aggregate counts, split into
 // numbered files in one folder, plus a manifest.json that lists them. The website loads the files and joins them.
+// The same table is also written as Parquet files, one band of listener counts each (songs-parquet.mjs), which the
+// manifest lists under "parquet", for a site that queries them with DuckDB instead of loading everything.
 // Only reads the database, which it opens read-only. No usernames, profiles or per-user data go in.
 // Usage: node scripts/export-songs.mjs --db db/users.db.age --out pages/data/songs [--part-mb 10]
 //
@@ -11,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { encryptedDbExists, readEncryptedDb } from "./db-store.mjs";
+import { writeSongParquet } from "./songs-parquet.mjs";
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -110,8 +113,9 @@ const candidates = db.prepare(`
   ORDER BY l.n DESC, plays DESC, a.name, s.name
 `).all(MIN_LISTENERS);
 db.close();
-fs.rmSync(workDir, { recursive: true, force: true });
+if (encrypted) fs.rmSync(localDb);
 
+const rows = [];
 const lines = [];
 let untagged = 0, fromSong = 0, fromArtist = 0;
 for (const c of candidates) {
@@ -119,7 +123,9 @@ for (const c of candidates) {
   const own = songGenres.get(c.song_id);
   const genres = own ?? artistGenres.get(c.artist_id);
   if (!genres) { untagged++; continue; }
-  lines.push(JSON.stringify([c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id, c.song_id]));
+  const row = [c.artist, c.song, genres, c.listeners, c.plays, c.loved_by, c.year, c.youtube_id, c.spotify_id, c.song_id];
+  rows.push(row);
+  lines.push(JSON.stringify(row));
   if (own) fromSong++; else fromArtist++;
 }
 
@@ -130,8 +136,11 @@ const version = hash.digest("hex").slice(0, 16);
 const manifestPath = path.join(out, "manifest.json");
 const previous = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
 const changed = previous?.version !== version;
+// An unchanged table that has no Parquet files yet still gets them.
+const writeParquet = changed || !previous?.parquet;
+let parts = previous?.parts;
 if (changed) {
-  const parts = [];
+  parts = [];
   const writePart = (partLines) => {
     const name = `part-${String(parts.length).padStart(3, "0")}.json`;
     const text = `{"rows":[\n${partLines.join(",\n")}\n]}\n`;
@@ -148,13 +157,19 @@ if (changed) {
     size += lineBytes;
   }
   if (current.length) writePart(current);
+}
+const parquet = writeParquet ? { files: await writeSongParquet(rows, COLUMNS, out, workDir) } : previous.parquet;
+fs.rmSync(workDir, { recursive: true, force: true });
+if (writeParquet) {
   // Written last, so a stopped run can't leave a manifest pointing at files that aren't there yet.
-  fs.writeFileSync(manifestPath, `${JSON.stringify({ built_at: new Date().toISOString(), version, columns: COLUMNS, count: lines.length, parts }, null, 1)}\n`);
+  const builtAt = changed ? new Date().toISOString() : previous.built_at;
+  fs.writeFileSync(manifestPath, `${JSON.stringify({ built_at: builtAt, version, columns: COLUMNS, count: lines.length, parts, parquet }, null, 1)}\n`);
 }
 
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-const totalBytes = manifest.parts.reduce((sum, p) => sum + p.bytes, 0);
+const megabytes = (files) => (files.reduce((sum, p) => sum + p.bytes, 0) / 1048576).toFixed(2);
 console.log(
-  `${changed ? "Wrote" : "No change to"} ${out}: ${manifest.count} songs in ${manifest.parts.length} file(s), ${(totalBytes / 1048576).toFixed(2)} MB. ` +
+  `${changed ? "Wrote" : "No change to"} ${out}: ${manifest.count} songs in ${manifest.parts.length} JSON file(s), ${megabytes(manifest.parts)} MB` +
+  `${writeParquet ? ", wrote" : ", kept"} ${manifest.parquet.files.length} Parquet file(s), ${megabytes(manifest.parquet.files)} MB. ` +
   `Genres from the song ${fromSong}, from the artist ${fromArtist}. Left out: ${untagged} with no known genre yet.`
 );

@@ -67,9 +67,6 @@ jobs:
           # The site's root has no app of its own, so send visitors to the main branch's build.
           cp feature/web/root-index.html pages/index.html
 
-      - name: Commit gh pages for feature
-        uses: EndBug/add-and-commit@v11
-        with:
-          cwd: pages
-          message: "Release for ${{ steps.extract_branch.outputs.branch }}"
-          push: origin gh-pages --set-upstream
+      - name: Publish gh-pages (replaces the branch, so it keeps no history)
+        shell: bash
+        run: bash feature/scripts/publish-pages.sh pages "Release for ${{ steps.extract_branch.outputs.branch }}"

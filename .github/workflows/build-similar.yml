@@ -3,7 +3,7 @@ name: Build song matches
 # For the site's "Like this song?" button. Only reads the database, so it isn't in the database-write group.
 on:
   schedule:
-    - cron: "12 7 * * 0" # weekly: the files are large, and rebuilding less often keeps gh-pages smaller
+    - cron: "12 7 * * 0" # weekly: the build is long, and the matches change slowly
   workflow_dispatch:
     inputs:
       songs:
@@ -88,10 +88,5 @@ jobs:
       - name: Merge the matches into the site's data
         run: node feature/scripts/merge-similar.mjs --from similar-out --into pages/data/similar
 
-      - name: Commit the matches to gh-pages
-        uses: EndBug/add-and-commit@v11
-        with:
-          cwd: pages
-          add: "data/similar"
-          message: "Update song matches"
-          push: origin gh-pages --set-upstream
+      - name: Publish the matches to gh-pages (replaces the branch, so it keeps no history)
+        run: bash feature/scripts/publish-pages.sh pages "Update song matches"
