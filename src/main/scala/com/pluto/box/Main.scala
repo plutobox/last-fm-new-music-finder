@@ -10,9 +10,9 @@ import scala.scalajs.js.Thenable.Implicits.*
 import scala.util.{Failure, Success}
 
 enum Load:
-  case Loading(filesDone: Int, filesTotal: Int)
+  case Loading
   case Failed(message: String)
-  case Ready(library: Library)
+  case Ready(catalog: Catalog, store: SongStore)
 
 // The data sits at the site root, and each branch's build is in its own folder, however deep.
 private val dataRoot: String =
@@ -32,15 +32,19 @@ private def fetchIfThere(url: String): Future[Option[String]] =
     else throw new Exception(s"the server answered ${response.status}")
 
 // The manifest is fetched fresh, and its build time keeps a browser from using a cached older file. A song with no
-// file or no entry simply has no matches yet.
-private def loadMatches(library: Library, id: Int): Future[Vector[SongMatch]] =
+// file or no entry simply has no matches yet. Matches no longer in the public list are left out.
+private def loadMatches(catalog: Catalog, store: SongStore, id: Int): Future[Vector[SongMatch]] =
   fetchIfThere(s"$dataRoot/similar/manifest.json?t=${js.Date.now().toLong}").flatMap:
     case None => Future.successful(Vector.empty)
     case Some(text) =>
       val (builtAt, shards) = Songs.parseMatchFiles(text)
       val name = s"00${id % shards}".takeRight(3)
-      fetchIfThere(s"$dataRoot/similar/$name.json?v=${js.URIUtils.encodeURIComponent(builtAt)}")
-        .map(_.fold(Vector.empty[SongMatch])(Songs.parseMatches(_, library, id)))
+      fetchIfThere(s"$dataRoot/similar/$name.json?v=${js.URIUtils.encodeURIComponent(builtAt)}").flatMap:
+        case None => Future.successful(Vector.empty)
+        case Some(matchText) =>
+          val pairs = Songs.parseMatches(matchText, id)
+          Search.byIds(store, catalog, pairs.map(_._1)).map: songs =>
+            pairs.flatMap((matchId, shared) => songs.get(matchId).map(SongMatch(_, shared)))
 
 private enum MatchLoad:
   case Loading
@@ -51,27 +55,16 @@ private def formatCount(n: Int): String =
   n.toString.reverse.grouped(3).mkString(",").reverse
 
 @main def main(): Unit =
-  val load = Var[Load](Load.Loading(0, 0))
+  val load = Var[Load](Load.Loading)
 
-  // The manifest is fetched fresh each time. Its version keeps a browser from mixing cached files from different builds.
+  // Only the manifest is loaded up front. The manifest is fetched fresh each time, and its version keeps a browser
+  // from mixing cached files from different builds.
   def fetchSongs(): Unit =
-    load.set(Load.Loading(0, 0))
+    load.set(Load.Loading)
     fetchText(s"$dataRoot/songs/manifest.json?t=${js.Date.now().toLong}")
-      .flatMap: text =>
-        val manifest = Songs.parseManifest(text)
-        var finished = 0
-        load.set(Load.Loading(0, manifest.parts.size))
-        Future
-          .traverse(manifest.parts): name =>
-            fetchText(s"$dataRoot/songs/$name?v=${manifest.version}").map: part =>
-              finished += 1
-              load.set(Load.Loading(finished, manifest.parts.size))
-              part
-          .map(parts => Songs.join(manifest, parts))
-      // Until the first split files are published, the data is still one file.
-      .recoverWith(_ => fetchText(s"$dataRoot/songs.json").map(Songs.parse))
+      .map(Catalog.parse)
       .onComplete:
-        case Success(library) => load.set(Load.Ready(library))
+        case Success(catalog) => load.set(Load.Ready(catalog, new SongStore(catalog, dataRoot)))
         case Failure(e)       => load.set(Load.Failed(e.getMessage))
 
   fetchSongs()
@@ -79,28 +72,77 @@ private def formatCount(n: Int): String =
   val app = div(
     cls := "page",
     child <-- load.signal.map:
-      case Load.Loading(_, 0)         => statusPanel("Loading songs...")
-      case Load.Loading(done, total) => statusPanel(s"Loading songs: $done of $total files...")
+      case Load.Loading => statusPanel("Loading songs...")
       case Load.Failed(message) =>
         div(
           cls := "status",
-          h1("Find ur next earworm"),
+          h1("Find your next earworm"),
           p(s"Couldn't load the song list: $message."),
           button(cls := "action", "Try again", onClick --> (_ => fetchSongs()))
         )
-      case Load.Ready(library) => finder(library)
+      case Load.Ready(catalog, store) => finder(catalog, store)
   )
 
-  renderOnDomContentLoaded(dom.document.getElementById("app"), app)
+  // index.html loads this script after hyparquet, which can be after the page has finished loading.
+  render(dom.document.getElementById("app"), app)
 
 private def statusPanel(message: String) =
-  div(cls := "status", h1("Find ur next earworm"), p(message))
+  div(cls := "status", h1("Find your next earworm"), p(message))
 
-private def finder(library: Library) =
+// The songs a search found, while the next one runs, and how many songs match in all once that's counted.
+private final case class Found(
+  songs: Vector[Song],
+  searching: Boolean,
+  // Songs checked so far by the search, or by the count once the songs are showing.
+  checked: Int = 0,
+  matched: Option[Int] = None,
+  counting: Boolean = false,
+  // Counting a search by artist or song name means reading every name, so it waits until asked.
+  countOnRequest: Boolean = false,
+  failure: Option[String] = None
+)
+
+private def finder(catalog: Catalog, store: SongStore) =
   val player = new Player
   val query = Var(Query())
   val shuffleSeed = Var(js.Math.floor(js.Math.random() * 1_000_000).toInt)
-  val result = query.signal.combineWith(shuffleSeed.signal).map((q, seed) => Songs.run(library, q, seed))
+  val found = Var(Found(Vector.empty, searching = true))
+
+  // Typing waits for a pause, so each key press doesn't start its own search. Any change starts a new search and
+  // stops the one before it, including its count.
+  var generation = 0
+  var alive: () => Boolean = () => false
+  var current = Query()
+
+  def countMatches(q: Query): Unit =
+    val stillAlive = alive
+    found.update(_.copy(counting = true, countOnRequest = false, checked = 0))
+    Search.count(store, catalog, q, stillAlive, n => if stillAlive() then found.update(_.copy(checked = n))).onComplete:
+      case Success(n) if stillAlive() => found.update(_.copy(matched = Some(n), counting = false))
+      case Failure(e: Cancelled) => ()
+      case Failure(e) if stillAlive() => found.update(_.copy(counting = false, failure = Some(e.getMessage)))
+      case _ => ()
+
+  def search(q: Query, seed: Int): Unit =
+    generation += 1
+    val mine = generation
+    val stillAlive = () => generation == mine
+    alive = stillAlive
+    current = q
+    found.update(_.copy(searching = true, checked = 0, failure = None))
+    val progress = (n: Int) => if stillAlive() then found.update(_.copy(checked = n))
+    Search.top(store, catalog, q, seed, stillAlive, progress).onComplete:
+      case Success(songs) if stillAlive() =>
+        // Fewer than asked for means these are all of them.
+        val counted = Option.when(songs.size < q.limit)(songs.size)
+        val onRequest = counted.isEmpty && Search.countIsCostly(q)
+        found.set(Found(songs, searching = false, matched = counted, countOnRequest = onRequest))
+        // Counted after the songs are showing, so it doesn't slow them down.
+        if counted.isEmpty && !onRequest then countMatches(q)
+      case Failure(e: Cancelled) => ()
+      case Failure(e) if stillAlive() => found.update(_.copy(searching = false, failure = Some(e.getMessage)))
+      case _ => ()
+  val searches = query.signal.composeChanges(_.debounce(250)).combineWith(shuffleSeed.signal)
 
   def update(f: Query => Query) = query.update(f)
 
@@ -169,7 +211,7 @@ private def finder(library: Library) =
       ),
       div(
         cls := "genres",
-        library.genres.map: (genre, count) =>
+        catalog.genres.map: (genre, count) =>
           button(
             typ := "button",
             cls := "genre",
@@ -280,7 +322,7 @@ private def finder(library: Library) =
       openedFrom = Option(dom.document.activeElement).collect { case e: dom.HTMLElement => e }
     matchesFor.set(Some(s))
     matchLoad.set(MatchLoad.Loading)
-    loadMatches(library, id).onComplete: outcome =>
+    loadMatches(catalog, store, id).onComplete: outcome =>
       // Ignored if another song was chosen, or the box closed, while this one loaded.
       if matchesFor.now().contains(s) then
         outcome match
@@ -361,7 +403,7 @@ private def finder(library: Library) =
       ),
       td(
         cls := "track",
-        div(cls := "bar", styleAttr := s"width:${(s.listeners * 100.0 / library.maxListeners).max(1.5)}%"),
+        div(cls := "bar", styleAttr := s"width:${(s.listeners * 100.0 / catalog.maxListeners).max(1.5)}%"),
         a(href := s.url, target := "_blank", rel := "noopener", cls := "title", s.title),
         div(cls := "artist", s.year.fold(s.artist)(y => s"${s.artist}, $y")),
         div(cls := "tags", s.genres.mkString(", ")),
@@ -374,21 +416,54 @@ private def finder(library: Library) =
 
   val results = sectionTag(
     cls := "results",
-    aria.live := "polite",
+    cls("is-searching") <-- found.signal.map(_.searching),
+    aria.busy <-- found.signal.map(_.searching),
+    searches --> ((q, seed) => search(q, seed)),
     p(
       cls := "summary",
-      child.text <-- result.map: r =>
-        if r.matched == 0 then "No songs match these filters."
-        else if r.matched <= r.songs.size then s"Showing all ${formatCount(r.matched)} matching songs."
-        else s"Showing ${formatCount(r.songs.size)} of ${formatCount(r.matched)} matching songs."
+      // Read out when the outcome changes, not on every step of progress.
+      span(
+        aria.live := "polite",
+        child.text <-- found.signal.map: f =>
+          f.failure match
+            case Some(message) => s"Couldn't search the songs: $message."
+            case None if f.searching => "Searching..."
+            case None =>
+              f.matched match
+                case Some(0) => "No songs match these filters."
+                case Some(n) if n <= f.songs.size => s"Showing all ${formatCount(n)} matching songs."
+                case Some(n) => s"Showing ${formatCount(f.songs.size)} of ${formatCount(n)} matching songs."
+                case None if f.counting => s"Showing the top ${formatCount(f.songs.size)}. Counting the matches..."
+                case None => s"Showing the top ${formatCount(f.songs.size)} matching songs."
+        .distinct
+      ),
+      span(
+        cls := "progress",
+        aria.hidden := true,
+        child.text <-- found.signal.map: f =>
+          if (f.searching || f.counting) && f.checked > 0 && f.failure.isEmpty then
+            s" Checked ${formatCount(f.checked)} of ${formatCount(catalog.count)}."
+          else ""
+      ),
+      child.maybe <-- found.signal.map(_.countOnRequest).distinct.map: ask =>
+        Option.when(ask)(
+          button(
+            typ := "button",
+            cls := "count",
+            "Count them all",
+            title := "Counting a search by name reads every song, so it can take a while on a slow connection.",
+            onClick --> (_ => countMatches(current))
+          )
+        )
     ),
-    child <-- result.map: r =>
-      if r.songs.isEmpty then
+    child <-- found.signal.map(f => (f.songs, f.songs.isEmpty && !f.searching && f.failure.isEmpty)).distinct.map: (songs, empty) =>
+      if empty then
         div(
           cls := "empty",
           p("Try fewer genres, a wider range or a shorter search."),
           button(cls := "action", typ := "button", "Clear all filters", onClick --> (_ => query.update(q => Query(limit = q.limit, sort = q.sort))))
         )
+      else if songs.isEmpty then emptyNode
       else
         table(
           thead(
@@ -400,17 +475,17 @@ private def finder(library: Library) =
               th(cls := "num", "Loved by")
             )
           ),
-          tbody(r.songs.zipWithIndex.map((s, i) => row(i + 1, s, r.songs)))
+          tbody(songs.zipWithIndex.map((s, i) => row(i + 1, s, songs)))
         )
   )
 
   div(
     cls := "finder",
     headerTag(
-      h1("Find ur next earworm"),
+      h1("Find your next earworm"),
       p(
         cls := "intro",
-        s"Search ${formatCount(library.songs.size)} songs by what Last.fm listeners play and love. Genres come from the song's own tags, or its artist's when it has none."
+        s"Search ${formatCount(catalog.count)} songs by what Last.fm listeners play and love. Genres come from the song's own tags, or its artist's when it has none."
       )
     ),
     filters,
@@ -418,7 +493,7 @@ private def finder(library: Library) =
     footerTag(
       "Data from ",
       a(href := "https://www.last.fm", target := "_blank", rel := "noopener", "Last.fm"),
-      s". Updated ${library.builtAt.take(10)}."
+      s". Updated ${catalog.builtAt.take(10)}."
     ),
     matchesBox,
     player.element
