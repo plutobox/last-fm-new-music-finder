@@ -1,0 +1,314 @@
+{
+ "built_at": "2026-11-21T10:43:48.986Z",
+ "version": "0e370952d21aa4d1",
+ "columns": [
+  "artist",
+  "song",
+  "genres",
+  "listeners",
+  "plays",
+  "loved_by",
+  "year",
+  "youtube_id",
+  "spotify_id",
+  "id"
+ ],
+ "count": 4272094,
+ "genres": [
+  [
+   "electronic",
+   607940
+  ],
+  [
+   "rock",
+   568708
+  ],
+  [
+   "pop",
+   441912
+  ],
+  [
+   "hip-hop",
+   406454
+  ],
+  [
+   "indie",
+   404852
+  ],
+  [
+   "rap",
+   324613
+  ],
+  [
+   "experimental",
+   277795
+  ],
+  [
+   "alternative",
+   276010
+  ],
+  [
+   "ambient",
+   220209
+  ],
+  [
+   "singer-songwriter",
+   216609
+  ],
+  [
+   "folk",
+   207624
+  ],
+  [
+   "jazz",
+   207076
+  ],
+  [
+   "punk",
+   185220
+  ],
+  [
+   "indie rock",
+   171126
+  ],
+  [
+   "metal",
+   160753
+  ],
+  [
+   "soul",
+   159456
+  ],
+  [
+   "hardcore",
+   156586
+  ],
+  [
+   "classic rock",
+   155816
+  ],
+  [
+   "black metal",
+   142311
+  ],
+  [
+   "alternative rock",
+   129728
+  ],
+  [
+   "hard rock",
+   128647
+  ],
+  [
+   "psychedelic",
+   124631
+  ],
+  [
+   "indie pop",
+   123162
+  ],
+  [
+   "r&b",
+   119496
+  ],
+  [
+   "dance",
+   117945
+  ],
+  [
+   "j-pop",
+   111470
+  ],
+  [
+   "death metal",
+   110727
+  ],
+  [
+   "post-punk",
+   109574
+  ],
+  [
+   "progressive rock",
+   107159
+  ],
+  [
+   "soundtrack",
+   101023
+  ],
+  [
+   "blues",
+   97657
+  ],
+  [
+   "funk",
+   88214
+  ],
+  [
+   "metalcore",
+   83639
+  ],
+  [
+   "house",
+   83532
+  ],
+  [
+   "synthpop",
+   82910
+  ],
+  [
+   "techno",
+   80017
+  ],
+  [
+   "trap",
+   67058
+  ],
+  [
+   "shoegaze",
+   64805
+  ],
+  [
+   "lo-fi",
+   62966
+  ],
+  [
+   "k-pop",
+   62382
+  ],
+  [
+   "classical",
+   61674
+  ],
+  [
+   "country",
+   61019
+  ],
+  [
+   "acoustic",
+   59638
+  ],
+  [
+   "idm",
+   57356
+  ],
+  [
+   "emo",
+   55101
+  ],
+  [
+   "trance",
+   51964
+  ],
+  [
+   "reggae",
+   43622
+  ],
+  [
+   "dubstep",
+   42938
+  ],
+  [
+   "drum and bass",
+   37993
+  ],
+  [
+   "latin",
+   36523
+  ],
+  [
+   "electropop",
+   28295
+  ],
+  [
+   "disco",
+   26880
+  ],
+  [
+   "grunge",
+   25316
+  ],
+  [
+   "indie folk",
+   12747
+  ],
+  [
+   "hyperpop",
+   9619
+  ],
+  [
+   "reggaeton",
+   7316
+  ],
+  [
+   "afrobeats",
+   5233
+  ],
+  [
+   "edm",
+   2979
+  ],
+  [
+   "dance-pop",
+   1414
+  ]
+ ],
+ "parquet": {
+  "format": 2,
+  "files": [
+   {
+    "name": "listeners-100-up-000.parquet",
+    "songs": 102140,
+    "bytes": 4723354,
+    "listeners": {
+     "min": 100,
+     "max": 9258
+    }
+   },
+   {
+    "name": "listeners-20-99-000.parquet",
+    "songs": 388073,
+    "bytes": 16915414,
+    "listeners": {
+     "min": 20,
+     "max": 99
+    }
+   },
+   {
+    "name": "listeners-10-19-000.parquet",
+    "songs": 429521,
+    "bytes": 13737616,
+    "listeners": {
+     "min": 10,
+     "max": 19
+    }
+   },
+   {
+    "name": "listeners-5-9-000.parquet",
+    "songs": 809533,
+    "bytes": 23699101,
+    "listeners": {
+     "min": 5,
+     "max": 9
+    }
+   },
+   {
+    "name": "listeners-3-4-000.parquet",
+    "songs": 1081322,
+    "bytes": 29156520,
+    "listeners": {
+     "min": 3,
+     "max": 4
+    }
+   },
+   {
+    "name": "listeners-2-2-000.parquet",
+    "songs": 1461505,
+    "bytes": 37083217,
+    "listeners": {
+     "min": 2,
+     "max": 2
+    }
+   }
+  ]
+ }
+}
